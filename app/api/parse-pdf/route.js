@@ -1,3 +1,5 @@
+import { loadPdfParser } from "@/lib/pdfRuntime";
+
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 
 // Page markers some PDF producers inject (e.g. "-- 1 of 2 --"). Stripped before
@@ -29,9 +31,10 @@ export async function POST(request) {
       return Response.json({ error: "That file doesn't look like a PDF. Please upload a .pdf file." }, { status: 415 });
     }
 
-    // Imported dynamically so a module/native-binding load failure is caught here
-    // and reported as JSON, rather than escaping as a 500 HTML error page.
-    const { PDFParse } = await import("pdf-parse");
+    // Loaded dynamically (with Node polyfills installed first) so a module or
+    // native-binding load failure is caught here and reported as JSON, rather
+    // than escaping as a 500 HTML error page.
+    const PDFParse = await loadPdfParser();
 
     parser = new PDFParse({ data: bytes });
     const result = await parser.getText();
