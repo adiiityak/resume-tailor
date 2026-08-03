@@ -39,6 +39,9 @@ yarn-error.log*
 /history/
 # saved job library (personal data)
 /jobs/
+# master resume & achievement bank (personal data)
+/master-resume/
+/achievements/
 
 # vercel
 .vercel
