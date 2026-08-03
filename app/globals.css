@@ -1,0 +1,163 @@
+@import "tailwindcss";
+
+:root {
+  --background: #ffffff;
+  --foreground: #171717;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.print-area {
+  display: none;
+}
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .print-area,
+  .print-area * {
+    visibility: visible;
+  }
+  .print-area {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    padding: 0.5in;
+    font-size: 11pt;
+    color: #000;
+  }
+}
+
+/* --- Structured resume print layout --- */
+
+.print-area .r-name {
+  font-size: 20pt;
+  font-weight: 700;
+  margin-bottom: 2pt;
+}
+
+.print-area .r-contact {
+  font-size: 10.5pt;
+  margin-bottom: 1pt;
+}
+
+.print-area .r-sec {
+  font-size: 12pt;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-top: 12pt;
+  margin-bottom: 5pt;
+}
+
+.print-area .r-entry {
+  display: flex;
+  justify-content: space-between;
+  gap: 12pt;
+  font-weight: 700;
+  margin-top: 7pt;
+  margin-bottom: 1pt;
+}
+
+.print-area .r-entry .r-date {
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.print-area .r-sub {
+  font-style: italic;
+  margin-bottom: 3pt;
+}
+
+.print-area .r-bullet {
+  padding-left: 14pt;
+  text-indent: -10pt;
+  margin-bottom: 2pt;
+}
+
+.print-area .r-text {
+  margin-bottom: 3pt;
+}
+
+.print-area .cl-pre {
+  white-space: pre-wrap;
+}
+
+/* --- V1 Classic serif --- */
+.print-v1 {
+  font-family: Georgia, "Times New Roman", serif;
+}
+.print-v1 .r-name {
+  text-align: center;
+  text-transform: uppercase;
+}
+.print-v1 .r-contact {
+  text-align: center;
+}
+.print-v1 .r-sec {
+  border-bottom: 1px solid #000;
+  padding-bottom: 2pt;
+}
+
+/* --- V2 Modern blue --- */
+.print-v2 {
+  font-family: "Segoe UI", Calibri, Arial, sans-serif;
+}
+.print-v2 .r-name {
+  font-size: 22pt;
+  color: #111827;
+}
+.print-v2 .r-sec {
+  color: #2563eb;
+  letter-spacing: 0.5pt;
+}
+
+/* --- V3 Minimal compact --- */
+.print-v3 {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 10pt;
+}
+.print-v3 .r-name {
+  font-size: 15pt;
+  text-transform: uppercase;
+}
+.print-v3 .r-contact {
+  font-size: 9.5pt;
+}
+.print-v3 .r-sec {
+  font-size: 9pt;
+  color: #6b7280;
+  letter-spacing: 2pt;
+}
+
+/* --- V4 Executive navy --- */
+.print-v4 {
+  font-family: Cambria, Georgia, serif;
+}
+.print-v4 .r-name {
+  text-align: center;
+  text-transform: uppercase;
+  color: #1f3a5f;
+  letter-spacing: 2pt;
+}
+.print-v4 .r-contact {
+  text-align: center;
+}
+.print-v4 .r-sec {
+  color: #1f3a5f;
+  border-bottom: 2px solid #1f3a5f;
+  padding-bottom: 2pt;
+}
