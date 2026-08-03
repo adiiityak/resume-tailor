@@ -8,8 +8,11 @@ import JobDescriptionPreview from "@/components/dashboard/JobDescriptionPreview"
 import MatchReport from "@/components/dashboard/MatchReport";
 import FilesList from "@/components/dashboard/FilesList";
 import ActivityTimeline from "@/components/dashboard/ActivityTimeline";
+import FitScore from "@/components/resume/FitScore";
+import ResumeDiffViewer from "@/components/resume/ResumeDiffViewer";
+import QualityChecker from "@/components/resume/QualityChecker";
 
-const TABS = ["Overview", "Resume", "Cover Letter", "Job Description", "Match Report", "Timeline", "Files"];
+const TABS = ["Overview", "Resume", "Compare", "Fit", "Quality", "Cover Letter", "Job Description", "Match Report", "Timeline", "Files"];
 
 export default function ApplicationTabs({ app, onStatusChange, onDuplicate, onDelete }) {
   const [active, setActive] = useState("Overview");
@@ -44,6 +47,9 @@ export default function ApplicationTabs({ app, onStatusChange, onDuplicate, onDe
           <ApplicationDetails app={app} onStatusChange={onStatusChange} onDuplicate={onDuplicate} onDelete={onDelete} />
         )}
         {active === "Resume" && <ResumePreview app={app} />}
+        {active === "Compare" && <ResumeDiffViewer diff={app.resumeDiff} />}
+        {active === "Fit" && (app.fitReport ? <FitScore fit={app.fitReport} /> : <p className="text-sm text-slate-500">No fit report was saved for this application.</p>)}
+        {active === "Quality" && <QualityChecker report={app.qualityReport} />}
         {active === "Cover Letter" && <CoverLetterPreview app={app} />}
         {active === "Job Description" && <JobDescriptionPreview app={app} />}
         {active === "Match Report" && <MatchReport report={app.matchReport} />}

@@ -6,6 +6,12 @@ import { DOC_VARIANTS, downloadResumeAsDocx, downloadCoverLetterAsDocx } from "@
 import { tailorLocally } from "@/lib/localTailor";
 import { generateCoverLetterLocally, guessCompanyName, guessJobTitle } from "@/lib/localCoverLetter";
 import { parseResume } from "@/lib/resumeParser";
+import { computeJobFit } from "@/lib/jobFit";
+import { computeResumeDiff } from "@/lib/resumeDiff";
+import { analyzeResumeQuality } from "@/lib/resumeQuality";
+import FitScore from "@/components/resume/FitScore";
+import ResumeDiffViewer from "@/components/resume/ResumeDiffViewer";
+import QualityChecker from "@/components/resume/QualityChecker";
 
 function VariantSelect({ value, onChange, idPrefix }) {
   return (
@@ -88,6 +94,11 @@ export default function Home() {
   const [applicationId, setApplicationId] = useState(null);
   const [saveNote, setSaveNote] = useState("");
 
+  const [fitReport, setFitReport] = useState(null);
+  const [diffReport, setDiffReport] = useState(null);
+  const [qualityReport, setQualityReport] = useState(null);
+  const [analysisTab, setAnalysisTab] = useState("fit");
+
   // Load a saved application into the editor when arriving from the dashboard (?load=<id>).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -109,6 +120,9 @@ export default function Home() {
         setResumeVariant(data.resumeVariant || "v1");
         setApplicationId(data.id);
         if (data.coverLetterText) setCoverLetter(data.coverLetterText);
+        if (data.fitReport) setFitReport(data.fitReport);
+        if (data.resumeDiff) setDiffReport(data.resumeDiff);
+        if (data.qualityReport) setQualityReport(data.qualityReport);
         if (data.matchReport) {
           setResult({
             matchScore: data.matchReport.matchScore ?? "—",
@@ -162,6 +176,21 @@ export default function Home() {
     }
   }
 
+  function checkFit() {
+    setError("");
+    if (!resume.trim() || !jobDescription.trim()) {
+      setError("Paste both your resume and the job description first.");
+      return;
+    }
+    setFitReport(computeJobFit(resume, jobDescription));
+    setAnalysisTab("fit");
+  }
+
+  function applyMetric(original, revised) {
+    if (!original || !revised) return;
+    setEditedResume((prev) => prev.split(original).join(revised));
+  }
+
   async function handleTailor() {
     setError("");
     setResult(null);
@@ -193,6 +222,15 @@ export default function Home() {
       setResult(data);
       setEditedResume(data.tailoredResume);
 
+      // Resume intelligence: fit, change-by-change diff with evidence, quality.
+      const fit = computeJobFit(resume, jobDescription);
+      const diff = computeResumeDiff(resume, data.tailoredResume);
+      const quality = analyzeResumeQuality(data.tailoredResume);
+      setFitReport(fit);
+      setDiffReport(diff);
+      setQualityReport(quality);
+      setAnalysisTab("compare");
+
       // Create a new application folder for this tailoring.
       try {
         const saveRes = await fetch("/api/applications", {
@@ -210,6 +248,10 @@ export default function Home() {
               missingKeywords: data.missingKeywords,
               notes: data.notes,
             },
+            fitReport: fit,
+            fitScore: fit.overall,
+            resumeDiff: diff,
+            qualityReport: quality,
             mode,
             resumeVariant,
             matchScore: typeof data.matchScore === "number" ? data.matchScore : null,
@@ -428,9 +470,34 @@ export default function Home() {
         >
           {coverLetterLoading ? "Writing..." : "Write cover letter"}
         </button>
+        <button
+          onClick={checkFit}
+          className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
+        >
+          Check job fit
+        </button>
         {error && <p className="text-sm text-red-600">{error}</p>}
         {coverLetterError && <p className="text-sm text-red-600">{coverLetterError}</p>}
       </div>
+
+      {fitReport && !result && (
+        <section className="mt-8">
+          <h2 className="mb-2 text-sm font-medium text-slate-700">Job fit (before tailoring)</h2>
+          <FitScore
+            fit={fitReport}
+            actions={
+              <>
+                <button onClick={handleTailor} disabled={loading} className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-slate-700 disabled:opacity-50">
+                  {loading ? "Tailoring..." : "Tailor anyway"}
+                </button>
+                <span className="self-center text-xs text-slate-500">
+                  A stretch fit is fine to apply to — the missing items just have no evidence in your resume yet.
+                </span>
+              </>
+            }
+          />
+        </section>
+      )}
 
       {result && (
         <section className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -481,6 +548,34 @@ export default function Home() {
               <p className="mt-2 text-sm text-slate-600">{result.notes}</p>
             </div>
           </div>
+        </section>
+      )}
+
+      {result && (diffReport || qualityReport || fitReport) && (
+        <section className="mt-10">
+          <h2 className="mb-3 text-lg font-semibold text-slate-900">Resume analysis</h2>
+          <div className="mb-4 flex gap-1 border-b border-slate-200" role="tablist" aria-label="Resume analysis">
+            {[
+              { key: "compare", label: "Compare & evidence" },
+              { key: "fit", label: "Job fit" },
+              { key: "quality", label: "Quality check" },
+            ].map((t) => (
+              <button
+                key={t.key}
+                role="tab"
+                aria-selected={analysisTab === t.key}
+                onClick={() => setAnalysisTab(t.key)}
+                className={`border-b-2 px-3 py-2 text-sm font-medium transition ${
+                  analysisTab === t.key ? "border-slate-900 text-slate-900" : "border-transparent text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          {analysisTab === "compare" && <ResumeDiffViewer diff={diffReport} />}
+          {analysisTab === "fit" && <FitScore fit={fitReport} />}
+          {analysisTab === "quality" && <QualityChecker report={qualityReport} onApplyMetric={applyMetric} />}
         </section>
       )}
 
