@@ -6,6 +6,7 @@ import { DOC_VARIANTS, downloadResumeAsDocx, downloadCoverLetterAsDocx } from "@
 import { tailorLocally } from "@/lib/localTailor";
 import { generateCoverLetterLocally, guessCompanyName, guessJobTitle } from "@/lib/localCoverLetter";
 import { parseResume } from "@/lib/resumeParser";
+import { fetchJson } from "@/lib/fetchJson";
 import { computeJobFit } from "@/lib/jobFit";
 import { computeResumeDiff } from "@/lib/resumeDiff";
 import { analyzeResumeQuality } from "@/lib/resumeQuality";
@@ -174,19 +175,20 @@ export default function Home() {
     setResumeFileError("");
     setResumeFileLoading(true);
     try {
-      const res = await fetch("/api/parse-pdf", {
+      if (file.type && file.type !== "application/pdf") {
+        setResumeFileError("Please choose a PDF file.");
+        return;
+      }
+      const { ok, data, error } = await fetchJson("/api/parse-pdf", {
         method: "POST",
         headers: { "Content-Type": "application/pdf" },
         body: file,
       });
-      const data = await res.json();
-      if (!res.ok) {
-        setResumeFileError(data.error || "Failed to parse that PDF.");
+      if (!ok) {
+        setResumeFileError(error);
         return;
       }
       setResume(data.text);
-    } catch (err) {
-      setResumeFileError(err.message || "Failed to upload the file.");
     } finally {
       setResumeFileLoading(false);
       e.target.value = "";
@@ -224,16 +226,16 @@ export default function Home() {
       if (mode === "local") {
         data = tailorLocally(resume, jobDescription);
       } else {
-        const res = await fetch("/api/tailor", {
+        const r = await fetchJson("/api/tailor", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ resume, jobDescription }),
         });
-        data = await res.json();
-        if (!res.ok) {
-          setError(data.error || "Something went wrong.");
+        if (!r.ok) {
+          setError(r.error);
           return;
         }
+        data = r.data;
       }
 
       setResult(data);
@@ -311,16 +313,16 @@ export default function Home() {
       if (mode === "local") {
         data = generateCoverLetterLocally(resume, jobDescription);
       } else {
-        const res = await fetch("/api/cover-letter", {
+        const r = await fetchJson("/api/cover-letter", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ resume, jobDescription }),
         });
-        data = await res.json();
-        if (!res.ok) {
-          setCoverLetterError(data.error || "Something went wrong.");
+        if (!r.ok) {
+          setCoverLetterError(r.error);
           return;
         }
+        data = r.data;
       }
 
       setCoverLetter(data.coverLetter);
