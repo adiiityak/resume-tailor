@@ -37,6 +37,8 @@ yarn-error.log*
 
 # saved resume/cover-letter history (personal data)
 /history/
+# saved job library (personal data)
+/jobs/
 
 # vercel
 .vercel

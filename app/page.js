@@ -92,6 +92,7 @@ export default function Home() {
   const [printTarget, setPrintTarget] = useState("resume");
 
   const [applicationId, setApplicationId] = useState(null);
+  const [sourceJobId, setSourceJobId] = useState(null);
   const [saveNote, setSaveNote] = useState("");
 
   const [fitReport, setFitReport] = useState(null);
@@ -102,6 +103,22 @@ export default function Home() {
   // Load a saved application into the editor when arriving from the dashboard (?load=<id>).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    const jobId = params.get("job");
+    if (jobId) {
+      setSourceJobId(jobId);
+      (async () => {
+        try {
+          const res = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`);
+          const job = await res.json();
+          if (!res.ok) return;
+          setJobDescription(job.jobDescription || "");
+          if (job.company) { setCompany(job.company); setCompanyTouched(true); }
+          if (job.role) { setRole(job.role); setRoleTouched(true); }
+          setSaveNote(`Tailoring for saved job: ${job.company} — ${job.role}`);
+        } catch { /* non-fatal */ }
+      })();
+    }
+
     const loadId = params.get("load");
     if (!loadId) return;
     (async () => {
@@ -261,6 +278,14 @@ export default function Home() {
         if (saveRes.ok) {
           setApplicationId(saved.application.id);
           setSaveNote(`Saved to ${saved.application.company} / ${saved.application.applicationDate} folder.`);
+          // Link the saved job back to this application.
+          if (sourceJobId) {
+            fetch(`/api/jobs/${encodeURIComponent(sourceJobId)}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ applicationId: saved.application.id }),
+            }).catch(() => {});
+          }
         }
       } catch {
         /* saving is a convenience; never block tailoring on it */
