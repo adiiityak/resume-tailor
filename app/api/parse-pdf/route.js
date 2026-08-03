@@ -1,5 +1,3 @@
-import { PDFParse } from "pdf-parse";
-
 const MAX_BYTES = 25 * 1024 * 1024; // 25 MB
 
 // Page markers some PDF producers inject (e.g. "-- 1 of 2 --"). Stripped before
@@ -31,6 +29,10 @@ export async function POST(request) {
       return Response.json({ error: "That file doesn't look like a PDF. Please upload a .pdf file." }, { status: 415 });
     }
 
+    // Imported dynamically so a module/native-binding load failure is caught here
+    // and reported as JSON, rather than escaping as a 500 HTML error page.
+    const { PDFParse } = await import("pdf-parse");
+
     parser = new PDFParse({ data: bytes });
     const result = await parser.getText();
 
@@ -43,10 +45,18 @@ export async function POST(request) {
 
     return Response.json({ text: result.text });
   } catch (err) {
+    const raw = err?.message || String(err);
     console.error("parse-pdf failed:", err);
-    const message = /password|encrypt/i.test(err?.message || "")
-      ? "That PDF is password-protected. Remove the password or paste the text instead."
-      : "Couldn't read that PDF. It may be corrupted or use an unsupported format — try re-exporting it, or paste the text instead.";
+
+    let message;
+    if (/password|encrypt/i.test(raw)) {
+      message = "That PDF is password-protected. Remove the password or paste the text instead.";
+    } else if (/cannot find module|worker|napi|\.node\b/i.test(raw)) {
+      // Environment/dependency problem rather than a problem with the file.
+      message = `PDF reading isn't working in this environment: ${raw.slice(0, 200)}. Paste your resume text instead — and restarting the dev server often clears this.`;
+    } else {
+      message = `Couldn't read that PDF (${raw.slice(0, 200)}). Try re-exporting it, or paste the text instead.`;
+    }
     return Response.json({ error: message }, { status: 422 });
   } finally {
     try {
