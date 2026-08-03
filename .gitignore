@@ -42,6 +42,9 @@ yarn-error.log*
 # master resume & achievement bank (personal data)
 /master-resume/
 /achievements/
+# reminders & contacts (personal data)
+/reminders/
+/contacts/
 
 # vercel
 .vercel

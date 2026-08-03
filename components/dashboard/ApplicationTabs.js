@@ -8,11 +8,12 @@ import JobDescriptionPreview from "@/components/dashboard/JobDescriptionPreview"
 import MatchReport from "@/components/dashboard/MatchReport";
 import FilesList from "@/components/dashboard/FilesList";
 import ActivityTimeline from "@/components/dashboard/ActivityTimeline";
+import ContactsTab from "@/components/dashboard/ContactsTab";
 import FitScore from "@/components/resume/FitScore";
 import ResumeDiffViewer from "@/components/resume/ResumeDiffViewer";
 import QualityChecker from "@/components/resume/QualityChecker";
 
-const TABS = ["Overview", "Resume", "Compare", "Fit", "Quality", "Cover Letter", "Job Description", "Match Report", "Timeline", "Files"];
+const TABS = ["Overview", "Resume", "Compare", "Fit", "Quality", "Cover Letter", "Job Description", "Match Report", "Contacts", "Timeline", "Files"];
 
 export default function ApplicationTabs({ app, onStatusChange, onDuplicate, onDelete }) {
   const [active, setActive] = useState("Overview");
@@ -53,6 +54,7 @@ export default function ApplicationTabs({ app, onStatusChange, onDuplicate, onDe
         {active === "Cover Letter" && <CoverLetterPreview app={app} />}
         {active === "Job Description" && <JobDescriptionPreview app={app} />}
         {active === "Match Report" && <MatchReport report={app.matchReport} />}
+        {active === "Contacts" && <ContactsTab app={app} />}
         {active === "Timeline" && <ActivityTimeline events={app.activity} />}
         {active === "Files" && <FilesList id={app.id} files={app.fileList} />}
       </div>

@@ -11,6 +11,7 @@ import ApplicationPipeline from "@/components/dashboard/ApplicationPipeline";
 import EmptyState from "@/components/dashboard/EmptyState";
 import DashboardLoadingState from "@/components/dashboard/DashboardLoadingState";
 import DeleteApplicationDialog from "@/components/dashboard/DeleteApplicationDialog";
+import RemindersPanel from "@/components/dashboard/RemindersPanel";
 import { sortApplications, matchesQuery } from "@/lib/dashboardShared";
 
 export default function DashboardPage() {
@@ -127,6 +128,10 @@ export default function DashboardPage() {
         <>
           <div className="mb-6">
             <DashboardStats summary={data.summary} />
+          </div>
+
+          <div className="mb-8">
+            <RemindersPanel applications={allApps} />
           </div>
 
           {data.summary?.corrupted > 0 && (
