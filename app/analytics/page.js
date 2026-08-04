@@ -17,9 +17,10 @@ import ResumePerformance from "@/components/analytics/ResumePerformance";
 import SkillGapRoadmap from "@/components/analytics/SkillGapRoadmap";
 import {
   analyticsPayloadState,
-  buildAnalyticsQuery,
+  buildAnalyticsRequest,
   buildSkillGapPatch,
-  replaceSkillGapRecord,
+  buildSkillGapRequest,
+  createAnalyticsCoordinator,
 } from "@/lib/analytics/client";
 
 const EMPTY_FILTERS = Object.freeze({
@@ -50,34 +51,51 @@ export default function AnalyticsPage() {
   const [error, setError] = useState("");
   const [updateError, setUpdateError] = useState("");
   const [updatingId, setUpdatingId] = useState(null);
+  const [refreshStatus, setRefreshStatus] = useState("");
   const requestController = useRef(null);
+  const mutationController = useRef(null);
+  const coordinator = useRef(null);
+  if (coordinator.current === null) coordinator.current = createAnalyticsCoordinator();
 
   const loadAnalytics = useCallback(async (nextFilters, { preserveData = false } = {}) => {
-    requestController.current?.abort();
+    const previousController = requestController.current;
+    const loadToken = coordinator.current.beginLoad();
     const controller = new AbortController();
     requestController.current = controller;
+    previousController?.abort();
     setError("");
     setLoading(!preserveData);
     setRefreshing(preserveData);
+    setRefreshStatus(preserveData ? "Refreshing analytics…" : "");
 
     try {
-      const query = buildAnalyticsQuery(nextFilters);
-      const response = await fetch(query ? `/api/analytics?${query}` : "/api/analytics", {
-        signal: controller.signal,
-      });
+      const request = buildAnalyticsRequest(nextFilters, controller.signal);
+      const response = await fetch(request.url, request.options);
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) throw new Error(safeErrorMessage(payload, LOAD_ERROR));
       if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new Error(LOAD_ERROR);
-      setData(payload);
+
+      const result = coordinator.current.commitLoadSuccess(loadToken, payload);
+      if (!result.accepted) return;
+
+      if (result.mutationInvalidated) {
+        const activeMutationController = mutationController.current;
+        mutationController.current = null;
+        activeMutationController?.abort();
+      }
+      setUpdatingId(null);
+      setUpdateError("");
+      setData(result.data);
     } catch (requestError) {
-      if (requestError?.name === "AbortError") return;
+      if (!coordinator.current.commitLoadError(loadToken)) return;
       setError(requestError instanceof Error && requestError.message ? requestError.message : LOAD_ERROR);
     } finally {
-      if (requestController.current === controller) {
-        requestController.current = null;
+      if (coordinator.current.finishLoad(loadToken)) {
+        if (requestController.current === controller) requestController.current = null;
         setLoading(false);
         setRefreshing(false);
+        if (preserveData) setRefreshStatus("Analytics refresh complete.");
       }
     }
   }, []);
@@ -86,7 +104,15 @@ export default function AnalyticsPage() {
     const initialLoad = window.setTimeout(() => loadAnalytics(EMPTY_FILTERS), 0);
     return () => {
       window.clearTimeout(initialLoad);
-      requestController.current?.abort();
+      const activeRequestController = requestController.current;
+      coordinator.current.invalidateLoad();
+      requestController.current = null;
+      activeRequestController?.abort();
+
+      const activeMutationController = mutationController.current;
+      coordinator.current.invalidateMutation();
+      mutationController.current = null;
+      activeMutationController?.abort();
     };
   }, [loadAnalytics]);
 
@@ -103,25 +129,19 @@ export default function AnalyticsPage() {
   }
 
   async function updateSkillGap(id, patch) {
-    const previousGap = data?.skillGaps?.find((record) => record.id === id);
-    if (!previousGap || updatingId) return;
-
     const safePatch = buildSkillGapPatch(patch);
-    const optimisticGap = { ...previousGap, ...safePatch };
+    const mutation = coordinator.current.beginSkillGapMutation(id, safePatch);
+    if (!mutation) return;
+
+    const controller = new AbortController();
+    mutationController.current = controller;
     setUpdatingId(id);
     setUpdateError("");
-    setData((current) => current ? {
-      ...current,
-      skillGaps: replaceSkillGapRecord(current.skillGaps, id, optimisticGap),
-    } : current);
+    setData(mutation.data);
 
     try {
-      const encodedId = encodeURIComponent(id);
-      const response = await fetch(`/api/skill-gaps/${encodedId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(safePatch),
-      });
+      const request = buildSkillGapRequest(id, safePatch, controller.signal);
+      const response = await fetch(request.url, request.options);
       const payload = await response.json().catch(() => null);
 
       if (!response.ok) throw new Error(safeErrorMessage(payload, UPDATE_ERROR));
@@ -129,18 +149,19 @@ export default function AnalyticsPage() {
         throw new Error(UPDATE_ERROR);
       }
 
-      setData((current) => current ? {
-        ...current,
-        skillGaps: replaceSkillGapRecord(current.skillGaps, id, payload.skillGap),
-      } : current);
+      const result = coordinator.current.commitMutationSuccess(mutation.token, payload.skillGap);
+      if (result.accepted) setData(result.data);
     } catch (requestError) {
-      setData((current) => current ? {
-        ...current,
-        skillGaps: replaceSkillGapRecord(current.skillGaps, id, previousGap),
-      } : current);
-      setUpdateError(requestError instanceof Error && requestError.message ? requestError.message : UPDATE_ERROR);
+      const result = coordinator.current.commitMutationFailure(mutation.token);
+      if (result.accepted) {
+        setData(result.data);
+        setUpdateError(requestError instanceof Error && requestError.message ? requestError.message : UPDATE_ERROR);
+      }
     } finally {
-      setUpdatingId((current) => current === id ? null : current);
+      if (coordinator.current.finishMutation(mutation.token)) {
+        if (mutationController.current === controller) mutationController.current = null;
+        setUpdatingId((current) => current === id ? null : current);
+      }
     }
   }
 
@@ -158,6 +179,7 @@ export default function AnalyticsPage() {
           onApply={applyFilters}
           onClear={clearFilters}
         />
+        <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">{refreshStatus}</p>
 
         {loading && !data && <AnalyticsLoadingState />}
 

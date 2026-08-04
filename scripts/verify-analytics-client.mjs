@@ -4,14 +4,18 @@ import { fileURLToPath } from "node:url";
 
 import {
   FILTER_ORDER,
+  buildAnalyticsRequest,
   buildAnalyticsQuery,
   buildSkillGapPatch,
+  buildSkillGapRequest,
+  createAnalyticsCoordinator,
   filterKeywordTrends,
   formatMetricValue,
   formatRate,
   formatRateWithDetail,
   isSkillGapSaveAllowed,
   rateDetail,
+  replaceSkillGapRecordIfCurrent,
 } from "../lib/analytics/client.js";
 
 const failures = [];
@@ -182,6 +186,121 @@ await check("replaces only one skill-gap record without mutating the source arra
   assert.deepEqual(records, [first, second]);
 });
 
+await check("replaces a skill-gap record only when its optimistic identity is still installed", async () => {
+  const optimistic = { id: "gap", notes: "optimistic" };
+  const newer = { id: "gap", notes: "newer" };
+  const untouched = { id: "other", notes: "keep" };
+  const replacement = { id: "gap", notes: "server" };
+
+  const accepted = replaceSkillGapRecordIfCurrent([optimistic, untouched], "gap", optimistic, replacement);
+  assert.equal(accepted.accepted, true);
+  assert.equal(accepted.records[0], replacement);
+  assert.equal(accepted.records[1], untouched);
+
+  const rejected = replaceSkillGapRecordIfCurrent([newer, untouched], "gap", optimistic, replacement);
+  assert.equal(rejected.accepted, false);
+  assert.equal(rejected.records[0], newer);
+  assert.equal(rejected.records[1], untouched);
+});
+
+await check("builds exact analytics and skill-gap request contracts", async () => {
+  const controller = new AbortController();
+  assert.deepEqual(
+    buildAnalyticsRequest({ company: "A & B" }, controller.signal),
+    {
+      url: "/api/analytics?company=A+%26+B",
+      options: { signal: controller.signal },
+    }
+  );
+
+  const request = buildSkillGapRequest("gap/a b", {
+    importance: "High",
+    learningStatus: "Learning",
+    notes: "Build a dashboard",
+    portfolioOpportunity: "Analytics case study",
+    evidenceLevel: "Strong",
+    frequency: 12,
+  }, controller.signal);
+  assert.equal(request.url, "/api/skill-gaps/gap%2Fa%20b");
+  assert.equal(request.options.method, "PATCH");
+  assert.deepEqual(request.options.headers, { "Content-Type": "application/json" });
+  assert.equal(request.options.signal, controller.signal);
+  assert.deepEqual(JSON.parse(request.options.body), {
+    importance: "High",
+    learningStatus: "Learning",
+    notes: "Build a dashboard",
+    portfolioOpportunity: "Analytics case study",
+  });
+});
+
+await check("suppresses out-of-order load success, error, and final settlement", async () => {
+  const coordinator = createAnalyticsCoordinator();
+  const first = coordinator.beginLoad();
+  const second = coordinator.beginLoad();
+  const oldPayload = { skillGaps: [{ id: "gap", notes: "old" }] };
+  const newPayload = { skillGaps: [{ id: "gap", notes: "new" }] };
+
+  assert.equal(coordinator.commitLoadSuccess(first, oldPayload).accepted, false);
+  assert.equal(coordinator.commitLoadError(first), false);
+  assert.equal(coordinator.finishLoad(first), false);
+  assert.equal(coordinator.commitLoadSuccess(second, newPayload).accepted, true);
+  assert.equal(coordinator.finishLoad(second), true);
+});
+
+await check("cleanup invalidates a load before its deferred settlement", async () => {
+  const coordinator = createAnalyticsCoordinator();
+  const load = coordinator.beginLoad();
+
+  coordinator.invalidateLoad();
+
+  assert.equal(coordinator.commitLoadSuccess(load, { skillGaps: [] }).accepted, false);
+  assert.equal(coordinator.commitLoadError(load), false);
+  assert.equal(coordinator.finishLoad(load), false);
+});
+
+await check("conditionally accepts optimistic success and isolated rollback", async () => {
+  const untouched = { id: "other", notes: "keep" };
+  const original = { id: "gap", notes: "before" };
+  const coordinator = createAnalyticsCoordinator({ skillGaps: [original, untouched] });
+  const success = coordinator.beginSkillGapMutation("gap", { notes: "optimistic" });
+  assert.ok(success);
+  assert.equal(success.data.skillGaps[0], success.token.optimisticRecord);
+
+  const settled = coordinator.commitMutationSuccess(success.token, { id: "gap", notes: "server" });
+  assert.equal(settled.accepted, true);
+  assert.deepEqual(settled.data.skillGaps[0], { id: "gap", notes: "server" });
+  assert.equal(settled.data.skillGaps[1], untouched);
+  assert.equal(coordinator.finishMutation(success.token), true);
+
+  const rollback = coordinator.beginSkillGapMutation("gap", { notes: "again" });
+  assert.ok(rollback);
+  const restored = coordinator.commitMutationFailure(rollback.token);
+  assert.equal(restored.accepted, true);
+  assert.equal(restored.data.skillGaps[0], rollback.token.previousRecord);
+  assert.equal(restored.data.skillGaps[1], untouched);
+});
+
+await check("new datasets and records make late mutation settlement a no-op", async () => {
+  const coordinator = createAnalyticsCoordinator({ skillGaps: [{ id: "gap", notes: "before" }] });
+  const oldMutation = coordinator.beginSkillGapMutation("gap", { notes: "optimistic-old" });
+  assert.ok(oldMutation);
+  const refresh = coordinator.beginLoad();
+  const newerPayload = { skillGaps: [{ id: "gap", notes: "from-refresh" }] };
+  const loaded = coordinator.commitLoadSuccess(refresh, newerPayload);
+
+  assert.equal(loaded.accepted, true);
+  assert.equal(loaded.mutationInvalidated, true);
+  assert.equal(loaded.data, newerPayload);
+  assert.equal(coordinator.commitMutationSuccess(oldMutation.token, { id: "gap", notes: "late-success" }).accepted, false);
+  assert.equal(coordinator.commitMutationFailure(oldMutation.token).accepted, false);
+
+  const newerMutation = coordinator.beginSkillGapMutation("gap", { notes: "optimistic-new" });
+  assert.ok(newerMutation);
+  assert.equal(coordinator.commitMutationSuccess(oldMutation.token, { id: "gap", notes: "older-record" }).accepted, false);
+  assert.equal(coordinator.commitMutationFailure(oldMutation.token).accepted, false);
+  assert.equal(coordinator.commitMutationSuccess(newerMutation.token, { id: "gap", notes: "new-server" }).accepted, true);
+});
+
 await check("wires Task 6 panels to the tested client safety contracts", async () => {
   const [keywords, editor, performance, matchScores] = await Promise.all([
     readFile(fileURLToPath(new URL("../components/analytics/KeywordTrends.js", import.meta.url)), "utf8"),
@@ -342,14 +461,51 @@ await check("replaces PlannedPage with a client analytics controller", async () 
 
 await check("loads filtered analytics with abort cleanup and last-data refresh state", async () => {
   const source = await readAnalyticsPage();
-  assert.match(source, /buildAnalyticsQuery/);
-  assert.match(source, /\/api\/analytics/);
+  assert.match(source, /buildAnalyticsRequest/);
   assert.match(source, /new AbortController\(\)/);
-  assert.match(source, /signal:\s*controller\.signal/);
+  assert.match(source, /controller\.signal/);
   assert.match(source, /\.abort\(\)/);
   assert.match(source, /loading/);
   assert.match(source, /refreshing/);
   assert.match(source, /setData/);
+});
+
+await check("wires every analytics settlement and cleanup through lifecycle guards", async () => {
+  const source = await readAnalyticsPage();
+  assert.match(source, /createAnalyticsCoordinator/);
+  assert.match(source, /buildAnalyticsRequest/);
+  assert.match(source, /commitLoadSuccess\(/);
+  assert.match(source, /commitLoadError\(/);
+  assert.match(source, /finishLoad\(/);
+
+  const cleanup = source.match(/return \(\) => \{([\s\S]*?)\n\s*\};\n\s*\}, \[loadAnalytics\]\);/);
+  assert.ok(cleanup, "analytics effect cleanup should be structurally identifiable");
+  assert.ok(cleanup[1].indexOf("invalidateLoad()") < cleanup[1].indexOf(".abort()"), "cleanup must invalidate the load before aborting it");
+});
+
+await check("wires roadmap settlement through mutation identity and revision guards", async () => {
+  const source = await readAnalyticsPage();
+  assert.match(source, /buildSkillGapRequest/);
+  assert.match(source, /beginSkillGapMutation\(/);
+  assert.match(source, /commitMutationSuccess\(/);
+  assert.match(source, /commitMutationFailure\(/);
+  assert.match(source, /finishMutation\(/);
+  assert.match(source, /mutationInvalidated/);
+});
+
+await check("keeps filters mounted and exposes persistent polite refresh status", async () => {
+  const [page, filters] = await Promise.all([
+    readAnalyticsPage(),
+    readComponent("components/analytics/AnalyticsFilters.js"),
+  ]);
+  assert.doesNotMatch(filters, /key=\{filterKey\}/);
+  assert.doesNotMatch(filters, /const filterKey\s*=/);
+  assert.doesNotMatch(filters, /useEffect/);
+  assert.match(filters, /if \(filters !== draftState\.filters\) \{\s*setDraftState\(\{ filters, values: normalizedFilters\(filters\) \}\);\s*\}/);
+  assert.match(page, /role=["']status["']/);
+  assert.match(page, /aria-live=["']polite["']/);
+  assert.match(page, /Refreshing analytics/);
+  assert.match(page, /Analytics refresh complete/);
 });
 
 await check("renders actionable loading, initial-error, empty, partial, and populated states", async () => {
@@ -378,11 +534,10 @@ await check("composes every approved panel in the required order", async () => {
 await check("sends safe optimistic skill-gap updates through the encoded PATCH route", async () => {
   const source = await readAnalyticsPage();
   assert.match(source, /buildSkillGapPatch/);
-  assert.match(source, /\/api\/skill-gaps\//);
-  assert.equal((source.match(/encodeURIComponent\(/g) || []).length, 1);
-  assert.match(source, /method:\s*["']PATCH["']/);
-  assert.match(source, /["']Content-Type["']:\s*["']application\/json["']/);
-  assert.match(source, /JSON\.stringify\(/);
+  assert.match(source, /buildSkillGapRequest/);
+  assert.match(source, /beginSkillGapMutation/);
+  assert.match(source, /commitMutationSuccess/);
+  assert.match(source, /commitMutationFailure/);
   assert.match(source, /updatingId/);
   assert.match(source, /skillGap/);
 });

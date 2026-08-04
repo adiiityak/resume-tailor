@@ -54,11 +54,17 @@ function FilterForm({ idPrefix, draft, onChange, onSubmit, onClear, options, ref
 }
 
 function AnalyticsFiltersForm({ filters, options, refreshing, onApply, onClear }) {
-  const [draft, setDraft] = useState(() => normalizedFilters(filters));
+  const [draftState, setDraftState] = useState(() => ({ filters, values: normalizedFilters(filters) }));
+
+  if (filters !== draftState.filters) {
+    setDraftState({ filters, values: normalizedFilters(filters) });
+  }
+
+  const draft = draftState.values;
 
   function handleChange(event) {
     const { name, value } = event.target;
-    setDraft((current) => ({ ...current, [name]: value }));
+    setDraftState((current) => ({ ...current, values: { ...current.values, [name]: value } }));
   }
 
   function handleSubmit(event) {
@@ -67,7 +73,7 @@ function AnalyticsFiltersForm({ filters, options, refreshing, onApply, onClear }
   }
 
   function handleClear() {
-    setDraft(emptyFilters());
+    setDraftState((current) => ({ ...current, values: emptyFilters() }));
     onClear();
   }
 
@@ -86,7 +92,5 @@ function AnalyticsFiltersForm({ filters, options, refreshing, onApply, onClear }
 }
 
 export default function AnalyticsFilters({ filters, options, refreshing, onApply, onClear }) {
-  const filterKey = FILTER_FIELDS.map((field) => filters?.[field] || "").join("\u0000");
-
-  return <AnalyticsFiltersForm key={filterKey} filters={filters} options={options} refreshing={refreshing} onApply={onApply} onClear={onClear} />;
+  return <AnalyticsFiltersForm filters={filters} options={options} refreshing={refreshing} onApply={onApply} onClear={onClear} />;
 }
