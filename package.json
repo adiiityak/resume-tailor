@@ -18,6 +18,7 @@
     "analytics:verify-core": "node --import ./scripts/alias-register.mjs scripts/verify-analytics-core.mjs",
     "analytics:verify-keywords": "node --import ./scripts/alias-register.mjs scripts/verify-analytics-keywords.mjs",
     "analytics:verify-gaps": "node --import ./scripts/alias-register.mjs scripts/verify-skill-gaps.mjs",
+    "analytics:verify-api": "node --import ./scripts/alias-register.mjs scripts/verify-analytics-api.mjs",
     "db:users": "node --import ./scripts/load-project-env.mjs --import ./scripts/alias-register.mjs scripts/list-users.mjs",
     "deployment:check": "node scripts/check-production-env.mjs",
     "deployment:verify": "node scripts/verify-deployment.mjs",
