@@ -61,6 +61,27 @@ To check the schema is valid *without* a database (runs against embedded Postgre
 npm run db:verify
 ```
 
+To verify the authentication boundary and Auth.js database adapter without using
+live OAuth credentials or your Supabase project:
+
+```bash
+npm run db:verify-auth
+```
+
+## How storage and sign-in modes work
+
+- Without `DATABASE_URL`, Resume Tailor uses the existing local filesystem and does
+  not require sign-in.
+- With `DATABASE_URL`, every page and API route requires GitHub sign-in, except the
+  Auth.js callback and sign-in page.
+- Database records are scoped to the authenticated Auth.js user ID. A missing or
+  failed session is rejected with `401` rather than falling back to a shared user.
+- Signing out returns to `/sign-in`; signing back in restores access to that
+  account's workspace.
+
+You can copy [`.env.local.example`](.env.local.example) as a starting point. Never
+commit `.env.local` or OAuth/database secrets.
+
 ## 4. Deploying to Vercel
 
 In your Vercel project → **Settings → Environment Variables**, add:

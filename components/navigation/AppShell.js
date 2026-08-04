@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV_ITEMS, NavIcon } from "@/components/navigation/navConfig";
 import PrivacyModeBadge from "@/components/navigation/PrivacyModeBadge";
+import AuthAccount from "@/components/auth/AuthAccount";
 
 function isActive(pathname, item) {
   if (item.exact) return pathname === item.href;
@@ -35,9 +36,11 @@ function NavLinks({ pathname, onNavigate }) {
   );
 }
 
-export default function AppShell({ children }) {
+export default function AppShell({ children, authEnabled = false }) {
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  if (pathname === "/sign-in") return children;
 
   return (
     <div className="flex min-h-screen">
@@ -45,10 +48,17 @@ export default function AppShell({ children }) {
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-slate-200 bg-white px-3 py-4 lg:flex print:hidden">
         <div className="mb-5 px-2">
           <div className="text-base font-semibold tracking-tight text-slate-900">Resume Tailor</div>
-          <div className="mt-1"><PrivacyModeBadge /></div>
+          <div className="mt-1">
+            {authEnabled ? (
+              <span className="inline-flex items-center gap-1.5 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700">Account protected</span>
+            ) : <PrivacyModeBadge />}
+          </div>
         </div>
         <NavLinks pathname={pathname} />
-        <div className="mt-auto px-2 pt-4 text-[11px] text-slate-400">Command Center · v1</div>
+        <div className="mt-auto px-2 pt-4">
+          {authEnabled && <AuthAccount />}
+          <div className="mt-3 text-[11px] text-slate-400">Command Center · v1</div>
+        </div>
       </aside>
 
       {/* Mobile top bar */}
@@ -64,7 +74,7 @@ export default function AppShell({ children }) {
             </svg>
           </button>
           <span className="text-sm font-semibold text-slate-900">Resume Tailor</span>
-          <PrivacyModeBadge />
+          {authEnabled ? <AuthAccount compact /> : <PrivacyModeBadge />}
         </div>
 
         {/* Mobile drawer */}
@@ -79,6 +89,7 @@ export default function AppShell({ children }) {
                 </button>
               </div>
               <NavLinks pathname={pathname} onNavigate={() => setDrawerOpen(false)} />
+              {authEnabled && <div className="mt-6 px-2"><AuthAccount /></div>}
             </div>
           </div>
         )}
