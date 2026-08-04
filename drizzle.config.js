@@ -1,5 +1,9 @@
+import nextEnv from "@next/env";
+
+nextEnv.loadEnvConfig(process.cwd());
+
 /** @type {import('drizzle-kit').Config} */
-export default {
+const config = {
   schema: "./lib/db/schema.js",
   out: "./drizzle",
   dialect: "postgresql",
@@ -10,3 +14,5 @@ export default {
   },
   strict: true,
 };
+
+export default config;

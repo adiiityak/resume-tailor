@@ -100,8 +100,19 @@ and filenames are validated to prevent path traversal. The `history/` folder is 
 it holds your personal data.
 
 Legacy `history/<Company>/*.json` records from the earlier flat format are migrated automatically
-on first load (marked `"migrated": true`); originals are removed only after being safely copied
-into the new structure.
+on first load (marked `"migrated": true`). Original files are preserved as an immutable recovery
+copy after the structured records are created.
+
+## Database deployment
+
+The application can run locally from the filesystem or as an authenticated Supabase-backed
+workspace on Vercel. See [SETUP.md](SETUP.md) for the production runbook. Useful checks:
+
+```bash
+npm run deployment:check
+npm run verify:ci
+npm run deployment:verify -- --url=https://YOUR-DOMAIN.vercel.app
+```
 
 ## Notes on ATS formatting
 

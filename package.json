@@ -12,17 +12,24 @@
     "db:verify": "node scripts/verify-schema.mjs",
     "db:verify-store": "node --import ./scripts/alias-register.mjs scripts/verify-store.mjs",
     "db:verify-store2": "node --import ./scripts/alias-register.mjs scripts/verify-store2.mjs",
-    "db:import": "node --import ./scripts/alias-register.mjs scripts/import-to-db.mjs",
+    "db:import": "node --import ./scripts/load-project-env.mjs --import ./scripts/alias-register.mjs scripts/import-to-db.mjs",
     "db:verify-import": "node --import ./scripts/alias-register.mjs scripts/verify-import.mjs",
     "db:verify-auth": "node --import ./scripts/alias-register.mjs scripts/verify-auth.mjs && node --import ./scripts/alias-register.mjs scripts/verify-auth-adapter.mjs && node --import ./scripts/alias-register.mjs scripts/verify-auth-access.mjs",
-    "db:users": "node --import ./scripts/alias-register.mjs scripts/list-users.mjs"
+    "db:users": "node --import ./scripts/load-project-env.mjs --import ./scripts/alias-register.mjs scripts/list-users.mjs",
+    "deployment:check": "node scripts/check-production-env.mjs",
+    "deployment:verify": "node scripts/verify-deployment.mjs",
+    "deployment:verify-config": "node --import ./scripts/alias-register.mjs scripts/verify-production-config.mjs && node scripts/verify-env-loader.mjs",
+    "verify:ci": "npm run db:verify && npm run db:verify-store && npm run db:verify-store2 && npm run db:verify-import && npm run db:verify-auth && npm run deployment:verify-config && npm run build"
+  },
+  "engines": {
+    "node": ">=20.9.0"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
     "@auth/drizzle-adapter": "^1.11.3",
     "docx": "^9.7.1",
     "drizzle-orm": "^0.45.2",
-    "next": "16.2.10",
+    "next": "^16.3.0",
     "next-auth": "^5.0.0-beta.32",
     "pdf-parse": "^2.4.5",
     "postgres": "^3.4.9",

@@ -23,6 +23,11 @@ const check = (name, condition, extra = "") => {
     decideAccess({ databaseMode: true, pathname: "/api/auth/callback/github", authenticated: false }).type === "allow"
   );
 
+  check(
+    "deployment health checks remain public",
+    decideAccess({ databaseMode: true, pathname: "/api/health", authenticated: false }).type === "allow"
+  );
+
   const api = decideAccess({ databaseMode: true, pathname: "/api/applications", authenticated: false });
   check("signed-out database API requests receive 401", api.type === "unauthorized");
 
