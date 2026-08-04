@@ -18,8 +18,8 @@ export default function PipelineConversionChart({ data = [] }) {
       <p className="mt-1 text-sm text-slate-600">Each stage is measured against submitted applications.</p>
       {data.length ? (
         <>
-          <div className="mt-4" role="img" aria-label={`Pipeline conversion: ${visualSummary}`}>
-            <ul className="space-y-3" data-analytics-fallback>
+          <div className="mt-4">
+            <ul className="space-y-3" aria-label={`Pipeline conversion: ${visualSummary}`} data-analytics-fallback>
               {data.map((row, index) => {
                 const label = row.stage || row.label || `Stage ${index + 1}`;
                 const percentage = percentageFor(row);

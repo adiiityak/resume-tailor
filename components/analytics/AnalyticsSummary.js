@@ -5,6 +5,10 @@ function hasValue(summary, key) {
   return Object.hasOwn(summary || {}, key);
 }
 
+function formatAverageResponseDays(value) {
+  return Number.isFinite(value) ? `${value.toFixed(1)} days` : "—";
+}
+
 export default function AnalyticsSummary({ summary = {}, definitions = {} }) {
   const cards = [
     hasValue(summary, "totalJobsSaved") && { label: "Jobs Saved", value: formatMetricValue(summary.totalJobsSaved), detail: "Saved jobs matching the current filters." },
@@ -15,7 +19,7 @@ export default function AnalyticsSummary({ summary = {}, definitions = {} }) {
     hasValue(summary, "offerRate") && { label: "Offer Rate", value: formatRate(summary.offerRate), detail: rateDetail(summary.offerRate), definition: definitions.offerRate },
     hasValue(summary, "rejectionRate") && { label: "Rejection Rate", value: formatRate(summary.rejectionRate), detail: rateDetail(summary.rejectionRate), definition: definitions.rejectionRate },
     hasValue(summary, "averageMatchScore") && { label: "Average Match", value: formatMetricValue(summary.averageMatchScore), detail: "Across applications with a stored match score.", definition: definitions.averageMatchScore },
-    hasValue(summary, "averageResponseDays") && { label: "Average Response", value: formatMetricValue(summary.averageResponseDays, " days"), detail: Number.isFinite(summary.averageResponseDays) ? `Based on ${formatMetricValue(summary.responseTimeSampleSize)} response records.` : "No eligible records", definition: definitions.averageResponseDays },
+    hasValue(summary, "averageResponseDays") && { label: "Average Response", value: formatAverageResponseDays(summary.averageResponseDays), detail: Number.isFinite(summary.averageResponseDays) ? `Based on ${formatMetricValue(summary.responseTimeSampleSize)} response records.` : "No eligible records", definition: definitions.averageResponseDays },
     hasValue(summary, "followUpCompletionRate") && { label: "Follow-up Completion", value: formatRate(summary.followUpCompletionRate), detail: rateDetail(summary.followUpCompletionRate, "eligible follow-ups"), definition: definitions.followUpCompletionRate },
   ].filter(Boolean);
 

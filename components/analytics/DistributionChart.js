@@ -16,8 +16,8 @@ export default function DistributionChart({ title, data = [] }) {
       <h2 id="distribution-chart-title" className="text-lg font-semibold text-slate-900">{title}</h2>
       {data.length ? (
         <>
-          <div className="mt-4" role="img" aria-label={`${title} distribution: ${visualSummary}`}>
-            <ul className="space-y-3" data-analytics-fallback>
+          <div className="mt-4">
+            <ul className="space-y-3" aria-label={`${title} distribution: ${visualSummary}`} data-analytics-fallback>
               {data.map((row, index) => {
                 const label = row.label || `Group ${index + 1}`;
                 const percentage = percentageFor(row);

@@ -12,6 +12,29 @@ import {
 
 const failures = [];
 
+function fallbackListIsNestedInImageRole(source) {
+  const stack = [];
+  const tags = source.matchAll(/<\/?([a-z][\w-]*)\b[^>]*>/gi);
+
+  for (const match of tags) {
+    const [tag, tagName] = match;
+    if (tag.startsWith("</")) {
+      const matchingIndex = stack.map((entry) => entry.tagName).lastIndexOf(tagName);
+      if (matchingIndex !== -1) stack.splice(matchingIndex);
+      continue;
+    }
+
+    const isFallbackList = tagName === "ul" && /\bdata-analytics-fallback\b/.test(tag);
+    if (isFallbackList && stack.some((entry) => entry.hasImageRole)) return true;
+
+    if (!tag.endsWith("/>")) {
+      stack.push({ tagName, hasImageRole: /\brole=["']img["']/.test(tag) });
+    }
+  }
+
+  return false;
+}
+
 async function check(name, callback) {
   try {
     await callback();
@@ -79,6 +102,25 @@ for (const chartPath of chartPaths) {
     assert.match(source, /data-analytics-fallback/);
   });
 }
+
+for (const chartPath of [
+  "components/analytics/PipelineConversionChart.js",
+  "components/analytics/DistributionChart.js",
+]) {
+  await check(`${chartPath} keeps its semantic fallback list outside image roles`, async () => {
+    const fileUrl = new URL(`../${chartPath}`, import.meta.url);
+    const source = await readFile(fileURLToPath(fileUrl), "utf8");
+    assert.match(source, /<ul\b(?=[^>]*\baria-label=)(?=[^>]*\bdata-analytics-fallback\b)[^>]*>/);
+    assert.equal(fallbackListIsNestedInImageRole(source), false);
+  });
+}
+
+await check("formats average response time with one fractional digit or an em dash", async () => {
+  const fileUrl = new URL("../components/analytics/AnalyticsSummary.js", import.meta.url);
+  const source = await readFile(fileURLToPath(fileUrl), "utf8");
+  assert.match(source, /function formatAverageResponseDays\(value\)\s*{\s*return Number\.isFinite\(value\) \? `\$\{value\.toFixed\(1\)\} days` : "—";\s*}/);
+  assert.match(source, /value: formatAverageResponseDays\(summary\.averageResponseDays\)/);
+});
 
 if (failures.length) {
   console.error(`\n${failures.length} analytics client verification failure${failures.length === 1 ? "" : "s"}.`);
