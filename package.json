@@ -9,7 +9,8 @@
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
-    "db:verify": "node scripts/verify-schema.mjs"
+    "db:verify": "node scripts/verify-schema.mjs",
+    "db:verify-store": "node --import ./scripts/alias-register.mjs scripts/verify-store.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
