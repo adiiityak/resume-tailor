@@ -2,6 +2,7 @@
 // real query paths are verified with no live database and no credentials.
 // Run: npm run db:verify-store
 import { PGlite } from "@electric-sql/pglite";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { readFileSync, readdirSync } from "fs";
 import path from "path";
@@ -21,7 +22,8 @@ for (const f of readdirSync(dir).filter((x) => x.endsWith(".sql")).sort()) {
   }
 }
 
-__setTestDb(drizzle(client, { schema }));
+const db = drizzle(client, { schema });
+__setTestDb(db);
 const store = await import("../lib/store/applications.db.js");
 
 let pass = 0, fail = 0;
@@ -41,10 +43,24 @@ const app = await store.createApplication({
   resumeDiff: { changes: [], summary: { unsupported: 0 } },
   qualityReport: { warnings: [], counts: { critical: 0, important: 0, suggestion: 0 } },
   mode: "local", resumeVariant: "v2", matchScore: 45, priority: "High",
+  submittedAt: "2026-08-04T09:30:00.000Z",
+  submittedResumeVersion: "resume-r9",
+  submittedCoverLetterVersion: "cover-letter-c4",
+  applicationSource: "Referral",
+  baseProfileId: "product-design",
 });
 check("id format preserved", /^google-product-designer-\d{4}-\d{2}-\d{2}-\d{6}$/.test(app.id), app.id);
 check("status defaults to Ready to Apply", app.status === "Ready to Apply", app.status);
 check("fitScore captured", app.fitScore === 45);
+check(
+  "submitted versions and analytics profile metadata survive create",
+  app.submittedAt === "2026-08-04T09:30:00.000Z" &&
+    app.submittedResumeVersion === "resume-r9" &&
+    app.submittedCoverLetterVersion === "cover-letter-c4" &&
+    app.applicationSource === "Referral" &&
+    app.baseProfileId === "product-design",
+  JSON.stringify(app)
+);
 check("files map populated", !!app.files.jobDescription && !!app.files.tailoredResume && !!app.files.resumeDocx);
 
 console.log("getApplication(full)");
@@ -115,6 +131,38 @@ console.log("updateApplication + setNextFollowUp");
 const upd = await store.updateApplication(app.id, { location: "Bengaluru, India", jobUrl: "https://x.test", notes: "kept in extra" });
 check("column patch applied", upd.location === "Bengaluru, India" && upd.jobUrl === "https://x.test");
 check("non-column patch kept in extra", upd.notes === "kept in extra");
+const submittedUpdate = await store.updateApplication(app.id, {
+  submittedAt: "2026-08-05T10:45:00.000Z",
+  submittedResumeVersion: "resume-r10",
+  submittedCoverLetterVersion: "cover-letter-c5",
+  applicationSource: "Company site",
+  baseProfileId: "senior-product-design",
+});
+check(
+  "submitted versions and analytics profile metadata survive update",
+  submittedUpdate.submittedAt === "2026-08-05T10:45:00.000Z" &&
+    submittedUpdate.submittedResumeVersion === "resume-r10" &&
+    submittedUpdate.submittedCoverLetterVersion === "cover-letter-c5" &&
+    submittedUpdate.applicationSource === "Company site" &&
+    submittedUpdate.baseProfileId === "senior-product-design",
+  JSON.stringify(submittedUpdate)
+);
+const [submittedRow] = await db.select({
+  submittedAt: schema.applications.submittedAt,
+  submittedResumeVersion: schema.applications.submittedResumeVersion,
+  submittedCoverLetterVersion: schema.applications.submittedCoverLetterVersion,
+  applicationSource: schema.applications.applicationSource,
+  extra: schema.applications.extra,
+}).from(schema.applications).where(eq(schema.applications.id, app.id)).limit(1);
+check(
+  "submitted updates use database columns while base profile remains preserved metadata",
+  submittedRow.submittedAt?.toISOString() === "2026-08-05T10:45:00.000Z" &&
+    submittedRow.submittedResumeVersion === "resume-r10" &&
+    submittedRow.submittedCoverLetterVersion === "cover-letter-c5" &&
+    submittedRow.applicationSource === "Company site" &&
+    submittedRow.extra?.baseProfileId === "senior-product-design",
+  JSON.stringify(submittedRow)
+);
 const fu = await store.setNextFollowUp(app.id, "2026-08-10");
 check("nextFollowUpAt set", fu.nextFollowUpAt === "2026-08-10");
 check("nextFollowUpAt clearable", (await store.setNextFollowUp(app.id, null)).nextFollowUpAt === null);

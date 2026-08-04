@@ -7,7 +7,7 @@ export default function AuthAccount({ compact = false }) {
   const user = session?.user;
 
   if (status === "loading") {
-    return <div className="h-8 w-full animate-pulse rounded-lg bg-slate-100" aria-label="Loading account" />;
+    return <div className={compact ? "h-11 w-11 animate-pulse rounded-full bg-slate-100" : "h-8 w-full animate-pulse rounded-lg bg-slate-100"} aria-label="Loading account" />;
   }
 
   if (!user) return null;
@@ -22,7 +22,7 @@ export default function AuthAccount({ compact = false }) {
         onClick={() => signOut({ callbackUrl: "/sign-in" })}
         title={`${label} — sign out`}
         aria-label={`Sign out ${label}`}
-        className="grid h-8 w-8 place-items-center rounded-full bg-slate-900 text-xs font-semibold text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
+        className="grid min-h-11 min-w-11 place-items-center rounded-full bg-slate-900 text-xs font-semibold text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus-visible:ring-offset-2"
       >
         {initial}
       </button>
@@ -43,7 +43,7 @@ export default function AuthAccount({ compact = false }) {
       <button
         type="button"
         onClick={() => signOut({ callbackUrl: "/sign-in" })}
-        className="mt-2 w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-slate-600 hover:bg-white hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+        className="mt-2 flex min-h-11 w-full items-center rounded-md px-2 py-1.5 text-left text-xs font-medium text-slate-600 hover:bg-white hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
       >
         Sign out
       </button>

@@ -12,7 +12,10 @@ const authenticatedProxy = auth((request) => {
   });
 
   if (decision.type === "unauthorized") {
-    return NextResponse.json({ error: "Authentication is required." }, { status: 401 });
+    return NextResponse.json(
+      { error: "Authentication is required." },
+      { status: 401, headers: { "Cache-Control": "no-store" } }
+    );
   }
 
   if (decision.type === "redirect") {

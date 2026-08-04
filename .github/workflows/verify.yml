@@ -29,5 +29,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify schema, stores, migration, auth, and build
+      - name: Verify schema, stores, migration, auth, analytics, and build
         run: npm run verify:ci

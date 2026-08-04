@@ -46,6 +46,8 @@ yarn-error.log*
 # reminders & contacts (personal data)
 /reminders/
 /contacts/
+# persisted skill-gap roadmap (personal data)
+/data/
 
 # vercel
 .vercel

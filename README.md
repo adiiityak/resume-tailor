@@ -103,6 +103,27 @@ Legacy `history/<Company>/*.json` records from the earlier flat format are migra
 on first load (marked `"migrated": true`). Original files are preserved as an immutable recovery
 copy after the structured records are created.
 
+## Analytics workspace
+
+`/analytics` is live and turns your saved applications, jobs, follow-ups, approved Master Resume
+entries, and evidenced achievements into a private job-search workspace. It includes filterable
+application and pipeline metrics, transparent metric definitions with their numerators and
+denominators, match-score and resume-performance groupings, keyword trends, and an editable
+Skill-Gap Roadmap.
+
+Analytics describes the records currently in your workspace. It does **not** prove that a resume
+design, profile, or match score caused an outcome. A rate with no eligible records is shown as
+unavailable rather than `0%`, and small performance groups show a reliability warning instead of
+an implied pattern.
+
+The Skill-Gap Roadmap distinguishes learning progress from resume evidence. `Verified in Resume`
+is available only when the skill has **Strong** evidence from an approved Master Resume entry or an
+achievement with recorded evidence; changing a learning status never creates that evidence.
+
+Analytics responses contain aggregates and short evidence references, not complete resumes or job
+descriptions. In filesystem mode, the analytics data remains on your machine; in database mode it
+uses the same authenticated, user-scoped workspace as the rest of the app.
+
 ## Database deployment
 
 The application can run locally from the filesystem or as an authenticated Supabase-backed
@@ -110,6 +131,7 @@ workspace on Vercel. See [SETUP.md](SETUP.md) for the production runbook. Useful
 
 ```bash
 npm run deployment:check
+npm run analytics:verify
 npm run verify:ci
 npm run deployment:verify -- --url=https://YOUR-DOMAIN.vercel.app
 ```

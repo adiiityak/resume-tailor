@@ -15,11 +15,19 @@
     "db:import": "node --import ./scripts/load-project-env.mjs --import ./scripts/alias-register.mjs scripts/import-to-db.mjs",
     "db:verify-import": "node --import ./scripts/alias-register.mjs scripts/verify-import.mjs",
     "db:verify-auth": "node --import ./scripts/alias-register.mjs scripts/verify-auth.mjs && node --import ./scripts/alias-register.mjs scripts/verify-auth-adapter.mjs && node --import ./scripts/alias-register.mjs scripts/verify-auth-access.mjs",
+    "analytics:verify-core": "node --import ./scripts/alias-register.mjs scripts/verify-analytics-core.mjs",
+    "analytics:verify-keywords": "node --import ./scripts/alias-register.mjs scripts/verify-analytics-keywords.mjs",
+    "analytics:verify-gaps": "node --import ./scripts/alias-register.mjs scripts/verify-skill-gaps.mjs",
+    "analytics:verify-api": "node --import ./scripts/alias-register.mjs scripts/verify-analytics-api.mjs",
+    "analytics:verify-storage": "node --import ./scripts/alias-register.mjs scripts/verify-analytics-storage.mjs",
+    "analytics:verify-route-boundary": "node scripts/verify-analytics-route-boundary.mjs",
+    "analytics:verify-client": "node scripts/verify-analytics-client.mjs",
+    "analytics:verify": "npm run analytics:verify-core && npm run analytics:verify-keywords && npm run analytics:verify-gaps && npm run analytics:verify-api && npm run analytics:verify-storage && npm run analytics:verify-route-boundary && npm run analytics:verify-client",
     "db:users": "node --import ./scripts/load-project-env.mjs --import ./scripts/alias-register.mjs scripts/list-users.mjs",
     "deployment:check": "node scripts/check-production-env.mjs",
     "deployment:verify": "node scripts/verify-deployment.mjs",
     "deployment:verify-config": "node --import ./scripts/alias-register.mjs scripts/verify-production-config.mjs && node scripts/verify-env-loader.mjs",
-    "verify:ci": "npm run db:verify && npm run db:verify-store && npm run db:verify-store2 && npm run db:verify-import && npm run db:verify-auth && npm run deployment:verify-config && npm run build"
+    "verify:ci": "npm run db:verify && npm run db:verify-store && npm run db:verify-store2 && npm run db:verify-import && npm run db:verify-auth && npm run deployment:verify-config && npm run analytics:verify && npm run build"
   },
   "engines": {
     "node": ">=20.9.0"

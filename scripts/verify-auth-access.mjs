@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import { decideAccess, safeReturnPath } from "../lib/auth/access.js";
 
 let pass = 0;
@@ -30,6 +31,14 @@ const check = (name, condition, extra = "") => {
 
   const api = decideAccess({ databaseMode: true, pathname: "/api/applications", authenticated: false });
   check("signed-out database API requests receive 401", api.type === "unauthorized");
+
+  const proxySource = await readFile(new URL("../proxy.js", import.meta.url), "utf8");
+  check(
+    "proxy database API 401 wiring is not cached",
+    /if \(decision\.type === "unauthorized"\) \{\s*return NextResponse\.json\([\s\S]*?\{ status: 401, headers: \{ "Cache-Control": "no-store" \} \}\s*\);/.test(
+      proxySource
+    )
+  );
 
   const page = decideAccess({
     databaseMode: true,

@@ -26,6 +26,9 @@ const tables = await db.query(
 );
 console.log(`\ntables created (${tables.rows.length}):`);
 console.log("  " + tables.rows.map((r) => r.table_name).join(", "));
+if (tables.rows.length !== 15 || !tables.rows.some((row) => row.table_name === "skill_gaps")) {
+  throw new Error(`Expected 15 tables including skill_gaps; found ${tables.rows.length}.`);
+}
 
 // Round-trip: insert an application + document + activity, then read back.
 const APP_ID = "google-product-designer-2026-08-03-154150";
@@ -73,6 +76,31 @@ try {
     [APP_ID, "tailored_resume", "dupe"]);
 } catch { dupBlocked = true; }
 console.log("  duplicate document blocked by PK:", dupBlocked);
+
+// Skill-gap roadmap round-trip, including JSONB and user-scoped composite identity.
+await db.query(
+  `insert into skill_gaps
+     (id, user_id, skill, skill_slug, category, frequency, percentage,
+      evidence_level, evidence_explanation, related_jobs)
+   values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+  ["skill-gap-product-analytics", "user-1", "Product analytics", "product-analytics",
+   "Tools", 3, 60, "None", "No verified evidence found.",
+   JSON.stringify([{ id: "j1", company: "A", role: "Designer" }])]
+);
+const gapRoundTrip = await db.query(
+  `select id, user_id, frequency, importance, importance_source, learning_status,
+          related_jobs->0->>'id' as related_job_id
+     from skill_gaps
+    where user_id=$1 and id=$2`,
+  ["user-1", "skill-gap-product-analytics"]
+);
+const gap = gapRoundTrip.rows[0];
+if (!gap || gap.frequency !== 3 || gap.importance !== "Low" ||
+    gap.importance_source !== "derived" || gap.learning_status !== "Not Started" ||
+    gap.related_job_id !== "j1") {
+  throw new Error(`Skill-gap round-trip failed: ${JSON.stringify(gap)}`);
+}
+console.log("  skill-gap round-trip:", JSON.stringify(gap));
 
 await db.close();
 console.log("\nSCHEMA VERIFIED");
