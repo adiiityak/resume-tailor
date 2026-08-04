@@ -1,4 +1,5 @@
 import { PGlite } from "@electric-sql/pglite";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
 import { mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
@@ -40,6 +41,56 @@ async function rejects400(operation) {
   } catch (error) {
     return error?.status === 400;
   }
+}
+
+function withConflictInterleaving(realDb, targetId) {
+  return new Proxy(realDb, {
+    get(target, property) {
+      if (property !== "transaction") {
+        const value = Reflect.get(target, property);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+      return (callback) => target.transaction(async (tx) => {
+        let interleaved = false;
+        const wrappedTx = new Proxy(tx, {
+          get(transaction, transactionProperty) {
+            if (transactionProperty !== "insert") {
+              const value = Reflect.get(transaction, transactionProperty);
+              return typeof value === "function" ? value.bind(transaction) : value;
+            }
+            return (table) => {
+              const insert = transaction.insert(table);
+              return {
+                values(values) {
+                  const query = insert.values(values);
+                  return {
+                    async onConflictDoUpdate(config) {
+                      if (!interleaved && values.id === targetId) {
+                        interleaved = true;
+                        await transaction.update(schema.skillGaps).set({
+                          importance: "Low",
+                          importanceSource: "user",
+                          learningStatus: "Verified in Resume",
+                          notes: "Concurrent note",
+                          portfolioOpportunity: "Concurrent portfolio",
+                          createdAt: new Date("2020-01-02T03:04:05.000Z"),
+                        }).where(and(
+                          eq(schema.skillGaps.userId, values.userId),
+                          eq(schema.skillGaps.id, values.id)
+                        ));
+                      }
+                      return query.onConflictDoUpdate(config);
+                    },
+                  };
+                },
+              };
+            };
+          },
+        });
+        return callback(wrappedTx);
+      });
+    },
+  });
 }
 
 async function runContract(name, store) {
@@ -132,6 +183,27 @@ async function runContract(name, store) {
   );
   check("missing record returns null", (await store.updateSkillGap("skill-gap-missing", { notes: "x" })) === null);
 
+  const strongGap = {
+    ...baseGap,
+    id: "skill-gap-verified-evidence",
+    skill: "Verified evidence",
+    skillSlug: "verified-evidence",
+    evidenceLevel: "Strong",
+    evidenceExplanation: "Verified evidence found.",
+  };
+  await store.syncSkillGaps([strongGap]);
+  const verified = await store.updateSkillGap(strongGap.id, { learningStatus: "Verified in Resume" });
+  check("Strong evidence can be verified in resume", verified.learningStatus === "Verified in Resume");
+  const [downgraded] = await store.syncSkillGaps([{
+    ...strongGap,
+    evidenceLevel: "Partial",
+    evidenceExplanation: "Only partial evidence remains.",
+  }]);
+  check(
+    "evidence downgrade resets verified learning status",
+    downgraded.evidenceLevel === "Partial" && downgraded.learningStatus === "Not Started"
+  );
+
   const countOnlyGap = {
     ...baseGap,
     id: "skill-gap-count-input",
@@ -162,9 +234,17 @@ try {
   const afterSameSync = await stat(dataFile);
   check("unchanged filesystem sync avoids a rewrite", beforeSameSync.mtimeMs === afterSameSync.mtimeMs);
 
-  await writeFile(dataFile, JSON.stringify([current.skillGaps[0], null, { id: "unsafe" }], null, 2));
+  const invalidVerifiedRecord = {
+    ...current.skillGaps[0],
+    id: "skill-gap-invalid-verified-record",
+    skill: "Invalid verified record",
+    skillSlug: "invalid-verified-record",
+    evidenceLevel: "Partial",
+    learningStatus: "Verified in Resume",
+  };
+  await writeFile(dataFile, JSON.stringify([current.skillGaps[0], invalidVerifiedRecord, null, { id: "unsafe" }], null, 2));
   const partiallyCorrupt = await store.listSkillGaps();
-  check("malformed filesystem records are counted and skipped", partiallyCorrupt.skillGaps.length === 1 && partiallyCorrupt.corrupted === 2);
+  check("malformed filesystem records are counted and skipped", partiallyCorrupt.skillGaps.length === 1 && partiallyCorrupt.corrupted === 3);
   await writeFile(dataFile, "{not json");
   const malformedJson = await store.listSkillGaps();
   check("malformed filesystem JSON is counted without throwing", malformedJson.skillGaps.length === 0 && malformedJson.corrupted === 1);
@@ -182,8 +262,39 @@ try {
       if (statement.trim()) await client.exec(statement.trim());
     }
   }
-  __setTestDb(drizzle(client, { schema }));
+  const realDb = drizzle(client, { schema });
+  __setTestDb(realDb);
   await runContract("database driver", store);
+
+  const concurrentGap = {
+    ...baseGap,
+    id: "skill-gap-concurrent-edit",
+    skill: "Concurrent edit",
+    skillSlug: "concurrent-edit",
+    evidenceLevel: "Strong",
+    evidenceExplanation: "Verified evidence found.",
+  };
+  await store.syncSkillGaps([concurrentGap]);
+  __setTestDb(withConflictInterleaving(realDb, concurrentGap.id));
+  const [afterConcurrentEdit] = await store.syncSkillGaps([{
+    ...concurrentGap,
+    frequency: 4,
+    evidenceLevel: "Partial",
+    evidenceExplanation: "Only partial evidence remains.",
+  }]);
+  check(
+    "database conflict preserves concurrent user fields and applies evidence downgrade",
+    afterConcurrentEdit.importance === "Low" &&
+      afterConcurrentEdit.importanceSource === "user" &&
+      afterConcurrentEdit.learningStatus === "Not Started" &&
+      afterConcurrentEdit.notes === "Concurrent note" &&
+      afterConcurrentEdit.portfolioOpportunity === "Concurrent portfolio" &&
+      afterConcurrentEdit.createdAt === "2020-01-02T03:04:05.000Z" &&
+      afterConcurrentEdit.evidenceLevel === "Partial" &&
+      afterConcurrentEdit.frequency === 4,
+    JSON.stringify(afterConcurrentEdit)
+  );
+  __setTestDb(realDb);
 
   process.env.RESUME_TAILOR_USER_ID = "skill-gap-user-2";
   const otherUser = await store.listSkillGaps();
