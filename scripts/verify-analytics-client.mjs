@@ -144,6 +144,44 @@ await check("formats backend rate objects without recomputing their values", () 
   assert.equal(formatRateWithDetail(unavailableBackendRate, "responses"), "2 of 5 responses · —");
 });
 
+await check("classifies exact empty, partial, and populated analytics payloads", async () => {
+  const { analyticsPayloadState } = await import("../lib/analytics/client.js");
+  const empty = {
+    summary: { totalJobsSaved: 0, applicationCount: 0 },
+    statusDistribution: [],
+    keywordTrends: [],
+    skillGaps: [],
+  };
+
+  assert.equal(analyticsPayloadState(empty), "empty");
+  assert.equal(analyticsPayloadState({ ...empty, summary: { ...empty.summary, totalJobsSaved: 1 } }), "partial");
+  assert.equal(analyticsPayloadState({ ...empty, summary: { ...empty.summary, applicationCount: 1 } }), "partial");
+  assert.equal(analyticsPayloadState({ ...empty, statusDistribution: [{ label: "Applied", count: 1 }] }), "partial");
+  assert.equal(analyticsPayloadState({ ...empty, keywordTrends: [{ term: "Figma" }] }), "partial");
+  assert.equal(analyticsPayloadState({ ...empty, skillGaps: [{ id: "skill-gap-figma" }] }), "partial");
+  assert.equal(analyticsPayloadState({
+    ...empty,
+    summary: { totalJobsSaved: 1, applicationCount: 1 },
+    statusDistribution: [{ label: "Applied", count: 1 }],
+    keywordTrends: [{ term: "Figma" }],
+    skillGaps: [{ id: "skill-gap-figma" }],
+  }), "populated");
+});
+
+await check("replaces only one skill-gap record without mutating the source array", async () => {
+  const { replaceSkillGapRecord } = await import("../lib/analytics/client.js");
+  const first = Object.freeze({ id: "skill-gap-figma", notes: "Before" });
+  const second = Object.freeze({ id: "skill-gap-research", notes: "Keep" });
+  const records = Object.freeze([first, second]);
+  const replacement = { id: "skill-gap-figma", notes: "After" };
+  const result = replaceSkillGapRecord(records, first.id, replacement);
+
+  assert.notEqual(result, records);
+  assert.equal(result[0], replacement);
+  assert.equal(result[1], second);
+  assert.deepEqual(records, [first, second]);
+});
+
 await check("wires Task 6 panels to the tested client safety contracts", async () => {
   const [keywords, editor, performance, matchScores] = await Promise.all([
     readFile(fileURLToPath(new URL("../components/analytics/KeywordTrends.js", import.meta.url)), "utf8"),
@@ -272,6 +310,81 @@ await check("limits the editor to approved importance and learning-status values
   assert.match(source, /const LEARNING_STATUS_OPTIONS = \["Not Started", "Learning", "Practising", "Used in Project", "Added to Portfolio", "Verified in Resume"\];/);
   assert.match(source, /record\.evidenceLevel !== "Strong"/);
   assert.match(source, /Learning progress does not count as resume evidence\. Add and approve real evidence in Master Resume or Achievements first\./);
+});
+
+const taskSevenPanelNames = [
+  "AnalyticsHeader",
+  "AnalyticsFilters",
+  "DataQualityNotice",
+  "AnalyticsSummary",
+  "ApplicationsTrendChart",
+  "PipelineConversionChart",
+  "DistributionChart",
+  "MatchScorePatterns",
+  "ResumePerformance",
+  "KeywordTrends",
+  "SkillGapRoadmap",
+  "MetricDefinitions",
+];
+
+async function readAnalyticsPage() {
+  return readFile(fileURLToPath(new URL("../app/analytics/page.js", import.meta.url)), "utf8");
+}
+
+await check("replaces PlannedPage with a client analytics controller", async () => {
+  const source = await readAnalyticsPage();
+  assert.match(source, /^\s*["']use client["'];/);
+  assert.doesNotMatch(source, /PlannedPage/);
+  assert.doesNotMatch(source, /export const metadata/);
+  assert.match(source, /useState/);
+  assert.match(source, /useEffect/);
+});
+
+await check("loads filtered analytics with abort cleanup and last-data refresh state", async () => {
+  const source = await readAnalyticsPage();
+  assert.match(source, /buildAnalyticsQuery/);
+  assert.match(source, /\/api\/analytics/);
+  assert.match(source, /new AbortController\(\)/);
+  assert.match(source, /signal:\s*controller\.signal/);
+  assert.match(source, /\.abort\(\)/);
+  assert.match(source, /loading/);
+  assert.match(source, /refreshing/);
+  assert.match(source, /setData/);
+});
+
+await check("renders actionable loading, initial-error, empty, partial, and populated states", async () => {
+  const source = await readAnalyticsPage();
+  assert.match(source, /AnalyticsLoadingState/);
+  assert.match(source, /AnalyticsEmptyState/);
+  assert.match(source, /Retry/);
+  assert.match(source, /Save a Job/);
+  assert.match(source, /Tailor a Resume/);
+  assert.match(source, /aria-live=["']assertive["']/);
+  assert.match(source, /updateError/);
+  assert.match(source, /partial/);
+  assert.match(source, /populated/);
+});
+
+await check("composes every approved panel in the required order", async () => {
+  const source = await readAnalyticsPage();
+  let previousIndex = -1;
+  for (const panelName of taskSevenPanelNames) {
+    const panelIndex = source.indexOf(`<${panelName}`);
+    assert.ok(panelIndex > previousIndex, `${panelName} should render after the preceding approved panel`);
+    previousIndex = panelIndex;
+  }
+});
+
+await check("sends safe optimistic skill-gap updates through the encoded PATCH route", async () => {
+  const source = await readAnalyticsPage();
+  assert.match(source, /buildSkillGapPatch/);
+  assert.match(source, /\/api\/skill-gaps\//);
+  assert.equal((source.match(/encodeURIComponent\(/g) || []).length, 1);
+  assert.match(source, /method:\s*["']PATCH["']/);
+  assert.match(source, /["']Content-Type["']:\s*["']application\/json["']/);
+  assert.match(source, /JSON\.stringify\(/);
+  assert.match(source, /updatingId/);
+  assert.match(source, /skillGap/);
 });
 
 if (failures.length) {
