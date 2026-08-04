@@ -55,6 +55,10 @@ npm run db:push
 
 This applies the schema in `lib/db/schema.js` to your Supabase database.
 
+The Job-Search Analytics phase adds the `skill_gaps` table. Run `npm run db:push` against the
+target database before deploying this phase (and after pulling its schema changes) so the
+Skill-Gap Roadmap can load and save.
+
 To check the schema is valid *without* a database (runs against embedded Postgres):
 
 ```bash
@@ -71,7 +75,8 @@ npm run db:verify-auth
 ## How storage and sign-in modes work
 
 - Without `DATABASE_URL`, Resume Tailor uses the existing local filesystem and does
-  not require sign-in.
+  not require sign-in. Analytics uses that same filesystem workspace, including a local,
+  git-ignored Skill-Gap Roadmap; no database migration is needed in this mode.
 - With `DATABASE_URL`, every page and API route requires GitHub sign-in, except the
   Auth.js callback and sign-in page.
 - Database records are scoped to the authenticated Auth.js user ID. A missing or
@@ -124,7 +129,7 @@ npm run deployment:verify -- --url=https://YOUR-DOMAIN.vercel.app
 ```
 
 The repository's `.github/workflows/verify.yml` workflow runs schema, database-store,
-import, authentication, production-config, and build checks on every push to `main`
+import, authentication, production-config, analytics, and build checks on every push to `main`
 and every pull request. Once Vercel's Git integration is connected, pushes to `main`
 create production deployments automatically.
 
