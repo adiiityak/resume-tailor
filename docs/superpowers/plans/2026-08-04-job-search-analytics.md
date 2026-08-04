@@ -265,6 +265,7 @@ git commit -m "Add local keyword and evidence analytics"
 - Create: `lib/skillGaps.js`
 - Create: `lib/store/skillGaps.fs.js`
 - Create: `lib/store/skillGaps.db.js`
+- Modify: `.gitignore`
 - Modify: `lib/db/schema.js`
 - Create: next generated `drizzle/*.sql` migration and metadata files
 - Create: `scripts/verify-skill-gaps.mjs`
@@ -323,7 +324,7 @@ export const IMPORTANCE_LEVELS = ["High", "Medium", "Low"];
 export const SAFE_GAP_ID = /^skill-gap-[a-z0-9]+(?:-[a-z0-9]+)*$/;
 ```
 
-Filesystem storage uses `path.join(process.cwd(), "data", "skill-gaps", "skill-gaps.json")`, atomic write-to-temp then rename, safe JSON parsing, and deterministic ordering by importance, frequency, and skill.
+Filesystem storage uses `path.join(process.cwd(), "data", "skill-gaps", "skill-gaps.json")`, atomic write-to-temp then rename, safe JSON parsing, and deterministic ordering by importance, frequency, and skill. Add `/data/` to `.gitignore` before the first filesystem write so personal roadmap records can never be staged.
 
 - [ ] **Step 4: Add the database table, migration, and DB store**
 
@@ -353,7 +354,7 @@ Add `"analytics:verify-gaps": "node --import ./scripts/alias-register.mjs script
 Commit:
 
 ```bash
-git add lib/skillGapsShared.js lib/skillGaps.js lib/store/skillGaps.fs.js lib/store/skillGaps.db.js lib/db/schema.js drizzle scripts/verify-schema.mjs scripts/verify-skill-gaps.mjs package.json
+git add .gitignore lib/skillGapsShared.js lib/skillGaps.js lib/store/skillGaps.fs.js lib/store/skillGaps.db.js lib/db/schema.js drizzle scripts/verify-schema.mjs scripts/verify-skill-gaps.mjs package.json
 git commit -m "Add persisted skill-gap roadmap storage"
 ```
 
