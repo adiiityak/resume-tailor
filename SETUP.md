@@ -88,11 +88,19 @@ Once the tables exist, bring your current `history/`, `jobs/`, `master-resume/`,
 `achievements/`, `reminders/` and `contacts/` files into the database:
 
 ```bash
-npm run db:import
+# After signing in once, find your GitHub user id:
+npm run db:users
+
+# Preview the import without writing anything:
+npm run db:import -- --user=YOUR_USER_ID --dry-run
+
+# Import under that authenticated user:
+npm run db:import -- --user=YOUR_USER_ID
 ```
 
-(Added in the import step of the migration — safe to re-run; it skips records that
-already exist.)
+The import is safe to re-run: existing records are skipped, IDs and timestamps are
+preserved, and the source files remain untouched. Keep the local folders until you
+have verified the deployed dashboard, then retain them as an offline backup.
 
 ## Privacy note
 
