@@ -1,8 +1,18 @@
 import { isDeepStrictEqual } from "node:util";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { parseAnalyticsFilters } from "../lib/analytics/filters.js";
 import { ANALYTICS_DEFINITIONS, getAnalytics } from "../lib/analytics.js";
-import { GET as getAnalyticsRoute, dynamic } from "../app/api/analytics/route.js";
-import { PATCH as patchSkillGapRoute } from "../app/api/skill-gaps/[id]/route.js";
+import {
+  createAnalyticsGetHandler,
+  GET as getAnalyticsRoute,
+  dynamic,
+} from "../app/api/analytics/route.js";
+import {
+  createSkillGapPatchHandler,
+  PATCH as patchSkillGapRoute,
+} from "../app/api/skill-gaps/[id]/route.js";
 
 let passed = 0;
 let failed = 0;
@@ -19,6 +29,22 @@ function check(name, condition, extra = "") {
 
 function same(actual, expected) {
   return isDeepStrictEqual(actual, expected);
+}
+
+async function withoutExpectedErrorLog(operation) {
+  const original = console.error;
+  console.error = () => {};
+  try {
+    return await operation();
+  } finally {
+    console.error = original;
+  }
+}
+
+function hasForbiddenKey(value, forbiddenKeys) {
+  if (!value || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some((item) => hasForbiddenKey(item, forbiddenKeys));
+  return Object.entries(value).some(([key, item]) => forbiddenKeys.has(key) || hasForbiddenKey(item, forbiddenKeys));
 }
 
 const EMPTY_FILTERS = { from: "", to: "", company: "", role: "", location: "", source: "" };
@@ -161,6 +187,9 @@ const dependencies = {
       reminders: [
         { id: "reminder-google", applicationId: "app-google", type: "Application Follow-up", status: "Completed", dueDate: "2026-08-02" },
         { id: "reminder-stripe", applicationId: "app-stripe", type: "Application Follow-up", status: "Pending", dueDate: "2026-07-25" },
+        { id: "reminder-corrupt", applicationId: "bad-full", type: "Application Follow-up", status: "Completed", dueDate: "2026-08-02" },
+        { id: "reminder-missing", applicationId: "missing-app", type: "Recruiter Follow-up", status: "Completed", dueDate: "2026-08-02" },
+        { id: "reminder-unlinked", applicationId: "", type: "Referral Follow-up", status: "Completed", dueDate: "2026-08-02" },
       ],
       corrupted: 5,
     };
@@ -303,7 +332,42 @@ check(
   serialized
 );
 
+const unfiltered = await getAnalytics(EMPTY_FILTERS, dependencies);
+const broadlyFiltered = await getAnalytics({
+  ...EMPTY_FILTERS,
+  from: "2026-07-01",
+  to: "2026-08-31",
+}, dependencies);
+check(
+  "follow-up metrics always exclude reminders without a successfully loaded application",
+  same(unfiltered.summary.followUpCompletionRate, { numerator: 1, denominator: 2, value: 50 }) &&
+    same(broadlyFiltered.summary.followUpCompletionRate, { numerator: 1, denominator: 2, value: 50 }),
+  JSON.stringify({
+    unfiltered: unfiltered.summary.followUpCompletionRate,
+    broadlyFiltered: broadlyFiltered.summary.followUpCompletionRate,
+  })
+);
+
 console.log("route validation and cache policy");
+const successfulGetHandler = createAnalyticsGetHandler(async (filters) => ({ kind: "aggregate", filters }));
+const successfulGet = await successfulGetHandler(new Request("http://localhost/api/analytics?company=Google"));
+const successfulGetBody = await successfulGet.json();
+check(
+  "analytics GET returns successful aggregate JSON with no-store",
+  successfulGet.status === 200 && successfulGet.headers.get("cache-control") === "no-store" &&
+    same(successfulGetBody, { kind: "aggregate", filters: { ...EMPTY_FILTERS, company: "google" } }),
+  JSON.stringify({ status: successfulGet.status, headers: Object.fromEntries(successfulGet.headers), body: successfulGetBody })
+);
+
+const failedGetHandler = createAnalyticsGetHandler(async () => { throw new Error("analytics fixture failure"); });
+const failedGet = await withoutExpectedErrorLog(() => failedGetHandler(new Request("http://localhost/api/analytics")));
+const failedGetBody = await failedGet.json();
+check(
+  "analytics GET maps unexpected failures to the approved 500 body",
+  failedGet.status === 500 && same(failedGetBody, { error: "Unable to load analytics." }),
+  JSON.stringify({ status: failedGet.status, body: failedGetBody })
+);
+
 const invalidGet = await getAnalyticsRoute(new Request("http://localhost/api/analytics?from=2026-02-30"));
 const invalidGetBody = await invalidGet.json();
 check(
@@ -335,6 +399,100 @@ check(
   "skill-gap PATCH forwards known validation errors as 400",
   invalidFieldPatch.status === 400 && invalidFieldBody.error === "Unknown skill-gap field: evidenceLevel.",
   JSON.stringify({ status: invalidFieldPatch.status, body: invalidFieldBody })
+);
+
+const successfulPatchHandler = createSkillGapPatchHandler(async (id, patch) => ({ id, ...patch }));
+const successfulPatch = await successfulPatchHandler(
+  new Request("http://localhost/api/skill-gaps/skill-gap-product-analytics", {
+    method: "PATCH",
+    body: JSON.stringify({ notes: "Updated note" }),
+  }),
+  { params: Promise.resolve({ id: "skill-gap-product-analytics" }) }
+);
+const successfulPatchBody = await successfulPatch.json();
+check(
+  "skill-gap PATCH returns the updated record with no-store",
+  successfulPatch.status === 200 && successfulPatch.headers.get("cache-control") === "no-store" &&
+    same(successfulPatchBody, {
+      ok: true,
+      skillGap: { id: "skill-gap-product-analytics", notes: "Updated note" },
+    }),
+  JSON.stringify({ status: successfulPatch.status, headers: Object.fromEntries(successfulPatch.headers), body: successfulPatchBody })
+);
+
+const missingPatchHandler = createSkillGapPatchHandler(async () => null);
+const missingPatch = await missingPatchHandler(
+  new Request("http://localhost/api/skill-gaps/skill-gap-product-analytics", {
+    method: "PATCH",
+    body: JSON.stringify({ notes: "Missing" }),
+  }),
+  { params: Promise.resolve({ id: "skill-gap-product-analytics" }) }
+);
+const missingPatchBody = await missingPatch.json();
+check(
+  "skill-gap PATCH returns the approved 404 body for a missing record",
+  missingPatch.status === 404 && same(missingPatchBody, { error: "Skill gap no longer exists." }),
+  JSON.stringify({ status: missingPatch.status, body: missingPatchBody })
+);
+
+const failedPatchHandler = createSkillGapPatchHandler(async () => { throw new Error("skill-gap fixture failure"); });
+const failedPatch = await withoutExpectedErrorLog(() => failedPatchHandler(
+  new Request("http://localhost/api/skill-gaps/skill-gap-product-analytics", {
+    method: "PATCH",
+    body: JSON.stringify({ notes: "Failure" }),
+  }),
+  { params: Promise.resolve({ id: "skill-gap-product-analytics" }) }
+));
+const failedPatchBody = await failedPatch.json();
+check(
+  "skill-gap PATCH maps unexpected failures to the approved 500 body",
+  failedPatch.status === 500 && same(failedPatchBody, { error: "Unable to update skill gap." }),
+  JSON.stringify({ status: failedPatch.status, body: failedPatchBody })
+);
+
+console.log("default analytics dependencies and fixture privacy");
+const originalStorageDriver = process.env.STORAGE_DRIVER;
+const originalDataRoot = process.env.RESUME_TAILOR_DATA_ROOT;
+const isolatedDataRoot = await mkdtemp(path.join(tmpdir(), "resume-editor-analytics-api-"));
+let defaultAnalytics;
+try {
+  process.env.STORAGE_DRIVER = "fs";
+  process.env.RESUME_TAILOR_DATA_ROOT = isolatedDataRoot;
+  defaultAnalytics = await getAnalytics(EMPTY_FILTERS);
+} finally {
+  if (originalStorageDriver === undefined) delete process.env.STORAGE_DRIVER;
+  else process.env.STORAGE_DRIVER = originalStorageDriver;
+  if (originalDataRoot === undefined) delete process.env.RESUME_TAILOR_DATA_ROOT;
+  else process.env.RESUME_TAILOR_DATA_ROOT = originalDataRoot;
+  await rm(isolatedDataRoot, { recursive: true, force: true });
+}
+
+const copiedFixtureDescription = (await readFile(
+  path.join(process.cwd(), "history", "google", "2026-08-03", "product-designer-154150", "job-description.txt"),
+  "utf8"
+)).trim();
+const copiedFixtureResume = (await readFile(
+  path.join(process.cwd(), "history", "google", "2026-08-03", "product-designer-154150", "original-resume.txt"),
+  "utf8"
+)).trim();
+const defaultSerialized = JSON.stringify(defaultAnalytics);
+check(
+  "real default dependencies return the approved aggregate response shape",
+  same(Object.keys(defaultAnalytics), [
+    "filters", "filterOptions", "summary", "definitions", "applicationsOverTime", "pipeline",
+    "statusDistribution", "breakdowns", "matchScorePatterns", "resumePerformance", "keywordTrends",
+    "skillGaps", "dataQuality",
+  ]) && Array.isArray(defaultAnalytics.pipeline) && Array.isArray(defaultAnalytics.keywordTrends) &&
+    Array.isArray(defaultAnalytics.skillGaps),
+  JSON.stringify(Object.keys(defaultAnalytics))
+);
+check(
+  "real default dependencies expose no raw source fields or copied fixture text",
+  !hasForbiddenKey(defaultAnalytics, new Set([
+    "jobDescription", "originalResume", "tailoredResume", "coverLetterText", "matchReport",
+    "fitReport", "resumeDiff", "qualityReport", "fileList", "activity",
+  ])) && !defaultSerialized.includes(copiedFixtureDescription) && !defaultSerialized.includes(copiedFixtureResume),
+  JSON.stringify({ hasDescription: defaultSerialized.includes(copiedFixtureDescription), hasResume: defaultSerialized.includes(copiedFixtureResume) })
 );
 
 console.log(`\n${passed} passed, ${failed} failed`);
