@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { buildSkillGapPatch, isSkillGapSaveAllowed } from "@/lib/analytics/client";
 
 const IMPORTANCE_OPTIONS = ["High", "Medium", "Low"];
 const LEARNING_STATUS_OPTIONS = ["Not Started", "Learning", "Practising", "Used in Project", "Added to Portfolio", "Verified in Resume"];
@@ -13,12 +14,12 @@ export default function SkillGapEditor({ record, saving = false, error, onSave, 
   const [learningStatus, setLearningStatus] = useState(record?.learningStatus || "Not Started");
   const [notes, setNotes] = useState(record?.notes || "");
   const [portfolioOpportunity, setPortfolioOpportunity] = useState(record?.portfolioOpportunity || "");
-  const needsAllowedStatus = learningStatus === "Verified in Resume" && record.evidenceLevel !== "Strong";
+  const needsAllowedStatus = !isSkillGapSaveAllowed({ learningStatus, evidenceLevel: record.evidenceLevel });
 
   function submit(event) {
     event.preventDefault();
     if (needsAllowedStatus) return;
-    onSave({ importance, learningStatus, notes, portfolioOpportunity });
+    onSave(buildSkillGapPatch({ importance, learningStatus, notes, portfolioOpportunity }));
   }
 
   return (

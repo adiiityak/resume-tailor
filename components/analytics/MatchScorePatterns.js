@@ -1,4 +1,4 @@
-import { formatRate, rateDetail } from "@/lib/analytics/client";
+import { formatRate, formatRateWithDetail, rateDetail } from "@/lib/analytics/client";
 
 const CAUSATION_NOTICE = "Patterns describe your current records. They do not prove that a resume design, profile, or match score caused an outcome.";
 
@@ -21,7 +21,7 @@ export default function MatchScorePatterns({ data = [] }) {
                 </tr>
               </thead>
               <tbody>
-                {data.map((row) => <tr key={row.label} className="border-b border-slate-100 text-slate-700"><th scope="row" className="px-3 py-3 font-medium text-slate-900">{row.label}</th><td className="px-3 py-3 text-right">{row.submitted}</td><td className="px-3 py-3 text-right">{row.responses}</td><td className="px-3 py-3 text-right">{rateDetail(row.responseRate)} · {formatRate(row.responseRate)}</td><td className="px-3 py-3 text-right">{row.interviews}</td><td className="px-3 py-3 text-right">{rateDetail(row.interviewRate)} · {formatRate(row.interviewRate)}</td></tr>)}
+                {data.map((row) => <tr key={row.label} className="border-b border-slate-100 text-slate-700"><th scope="row" className="px-3 py-3 font-medium text-slate-900">{row.label}</th><td className="px-3 py-3 text-right">{row.submitted}</td><td className="px-3 py-3 text-right">{row.responses}</td><td className="px-3 py-3 text-right">{formatRateWithDetail(row.responseRate)}</td><td className="px-3 py-3 text-right">{row.interviews}</td><td className="px-3 py-3 text-right">{formatRateWithDetail(row.interviewRate)}</td></tr>)}
               </tbody>
             </table>
           </div>

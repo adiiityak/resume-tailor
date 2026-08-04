@@ -5,8 +5,12 @@ import { fileURLToPath } from "node:url";
 import {
   FILTER_ORDER,
   buildAnalyticsQuery,
+  buildSkillGapPatch,
+  filterKeywordTrends,
   formatMetricValue,
   formatRate,
+  formatRateWithDetail,
+  isSkillGapSaveAllowed,
   rateDetail,
 } from "../lib/analytics/client.js";
 
@@ -88,6 +92,72 @@ await check("formats metric values and explains numerator context", () => {
   assert.equal(rateDetail({ numerator: 0, denominator: 0 }), "No eligible records");
 });
 
+await check("filters keyword trends without mutating or reordering backend results", () => {
+  const trends = [
+    { term: "React", category: "Framework", evidenceLevel: "Strong" },
+    { term: "Node.js", category: "Runtime", evidenceLevel: "Partial" },
+    { term: "TypeScript", category: "Language", evidenceLevel: "Strong" },
+    { term: "Next.js", category: "Framework", evidenceLevel: "Strong" },
+  ];
+  const before = [...trends];
+
+  assert.deepEqual(
+    filterKeywordTrends(trends, { category: "Framework", evidenceLevel: "Strong" }).map((trend) => trend.term),
+    ["React", "Next.js"]
+  );
+  assert.deepEqual(trends, before);
+  assert.equal(filterKeywordTrends(trends, { category: "Missing" }).length, 0);
+});
+
+await check("builds an exact four-field skill-gap patch", () => {
+  assert.deepEqual(
+    buildSkillGapPatch({
+      importance: "High",
+      learningStatus: "Learning",
+      notes: "Build a sample dashboard",
+      portfolioOpportunity: "Analytics case study",
+      evidenceLevel: "Strong",
+      frequency: 12,
+      maliciousExtraField: "do not persist",
+    }),
+    {
+      importance: "High",
+      learningStatus: "Learning",
+      notes: "Build a sample dashboard",
+      portfolioOpportunity: "Analytics case study",
+    }
+  );
+});
+
+await check("allows Verified in Resume only with Strong evidence and rejects a downgraded saved status", () => {
+  assert.equal(isSkillGapSaveAllowed({ learningStatus: "Verified in Resume", evidenceLevel: "Strong" }), true);
+  assert.equal(isSkillGapSaveAllowed({ learningStatus: "Learning", evidenceLevel: "Partial" }), true);
+  assert.equal(isSkillGapSaveAllowed({ learningStatus: "Verified in Resume", evidenceLevel: "Partial" }), false);
+  assert.equal(isSkillGapSaveAllowed({ learningStatus: "Verified in Resume", evidenceLevel: null }), false);
+});
+
+await check("formats backend rate objects without recomputing their values", () => {
+  const backendRate = Object.freeze({ numerator: 2, denominator: 5, value: 63 });
+  const unavailableBackendRate = Object.freeze({ numerator: 2, denominator: 5, value: null });
+
+  assert.equal(formatRateWithDetail(backendRate), "2 of 5 submitted applications · 63%");
+  assert.equal(formatRateWithDetail(unavailableBackendRate, "responses"), "2 of 5 responses · —");
+});
+
+await check("wires Task 6 panels to the tested client safety contracts", async () => {
+  const [keywords, editor, performance, matchScores] = await Promise.all([
+    readFile(fileURLToPath(new URL("../components/analytics/KeywordTrends.js", import.meta.url)), "utf8"),
+    readFile(fileURLToPath(new URL("../components/analytics/SkillGapEditor.js", import.meta.url)), "utf8"),
+    readFile(fileURLToPath(new URL("../components/analytics/ResumePerformance.js", import.meta.url)), "utf8"),
+    readFile(fileURLToPath(new URL("../components/analytics/MatchScorePatterns.js", import.meta.url)), "utf8"),
+  ]);
+  assert.match(keywords, /filterKeywordTrends\(trends, \{ category, evidenceLevel \}\)/);
+  assert.match(editor, /buildSkillGapPatch\(\{ importance, learningStatus, notes, portfolioOpportunity \}\)/);
+  assert.match(editor, /isSkillGapSaveAllowed\(\{ learningStatus, evidenceLevel: record\.evidenceLevel \}\)/);
+  assert.match(performance, /formatRateWithDetail\(row\.interviewRate\)/);
+  assert.match(matchScores, /formatRateWithDetail\(row\.responseRate\)/);
+});
+
 const chartPaths = [
   "components/analytics/ApplicationsTrendChart.js",
   "components/analytics/PipelineConversionChart.js",
@@ -166,6 +236,15 @@ await check("associates roadmap editor controls with visible labels", async () =
     assert.match(editor, new RegExp(`<label[^>]*htmlFor=["']skill-gap-${field}["']`));
     assert.match(editor, new RegExp(`id=["']skill-gap-${field}["']`));
   }
+});
+
+await check("keeps the roadmap editor outside responsive record layouts with one error live region", async () => {
+  const [roadmap, editor] = await Promise.all([
+    readComponent("components/analytics/SkillGapRoadmap.js"),
+    readComponent("components/analytics/SkillGapEditor.js"),
+  ]);
+  assert.equal((roadmap.match(/<SkillGapEditor\b/g) || []).length, 1);
+  assert.equal((editor.match(/aria-live=/g) || []).length, 1);
 });
 
 await check("limits the editor to approved importance and learning-status values", async () => {

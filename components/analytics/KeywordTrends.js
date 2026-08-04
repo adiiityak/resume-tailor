@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { formatRate } from "@/lib/analytics/client";
+import { filterKeywordTrends, formatRate } from "@/lib/analytics/client";
 import EvidenceBadge from "./EvidenceBadge";
 
 const focusClass = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2";
@@ -12,7 +12,7 @@ export default function KeywordTrends({ trends = [] }) {
   const [evidenceLevel, setEvidenceLevel] = useState("");
   const categories = [...new Set(trends.map((trend) => trend.category).filter(Boolean))];
   const evidenceLevels = [...new Set(trends.map((trend) => trend.evidenceLevel).filter(Boolean))];
-  const filtered = useMemo(() => trends.filter((trend) => (!category || trend.category === category) && (!evidenceLevel || trend.evidenceLevel === evidenceLevel)), [trends, category, evidenceLevel]);
+  const filtered = useMemo(() => filterKeywordTrends(trends, { category, evidenceLevel }), [trends, category, evidenceLevel]);
 
   return (
     <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm" aria-labelledby="keyword-trends-title">

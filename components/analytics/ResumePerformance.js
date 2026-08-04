@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { formatRate, rateDetail } from "@/lib/analytics/client";
+import { formatRateWithDetail } from "@/lib/analytics/client";
 
 const GROUPS = [
   ["variants", "Variants"],
@@ -26,10 +26,10 @@ function PerformanceRows({ rows }) {
       <div className="mt-4 hidden overflow-x-auto md:block">
         <table className="min-w-full text-left text-sm">
           <thead className="border-b border-slate-200 text-xs font-semibold uppercase tracking-wide text-slate-600"><tr><th scope="col" className="px-3 py-2">Group</th><th scope="col" className="px-3 py-2 text-right">Submitted</th><th scope="col" className="px-3 py-2 text-right">Interview progression</th><th scope="col" className="px-3 py-2 text-right">Offer progression</th><th scope="col" className="px-3 py-2">Data note</th></tr></thead>
-          <tbody>{rows.map((row) => <tr key={row.key || row.label} className="border-b border-slate-100 text-slate-700"><th scope="row" className="px-3 py-3 font-medium text-slate-900">{row.label}</th><td className="px-3 py-3 text-right">{row.submitted}</td><td className="px-3 py-3 text-right">{rateDetail(row.interviewRate)} · {formatRate(row.interviewRate)}</td><td className="px-3 py-3 text-right">{rateDetail(row.offerRate)} · {formatRate(row.offerRate)}</td><td className="px-3 py-3 text-slate-600">{warningFor(row) || "—"}</td></tr>)}</tbody>
+          <tbody>{rows.map((row) => <tr key={row.key || row.label} className="border-b border-slate-100 text-slate-700"><th scope="row" className="px-3 py-3 font-medium text-slate-900">{row.label}</th><td className="px-3 py-3 text-right">{row.submitted}</td><td className="px-3 py-3 text-right">{formatRateWithDetail(row.interviewRate)}</td><td className="px-3 py-3 text-right">{formatRateWithDetail(row.offerRate)}</td><td className="px-3 py-3 text-slate-600">{warningFor(row) || "—"}</td></tr>)}</tbody>
         </table>
       </div>
-      <div className="mt-4 space-y-3 md:hidden">{rows.map((row) => <article key={row.key || row.label} className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-slate-900">{row.label}</h3><dl className="mt-3 space-y-2 text-sm text-slate-700"><div className="flex justify-between gap-3"><dt>Submitted</dt><dd>{row.submitted}</dd></div><div><dt className="font-medium">Interview progression</dt><dd>{rateDetail(row.interviewRate)} · {formatRate(row.interviewRate)}</dd></div><div><dt className="font-medium">Offer progression</dt><dd>{rateDetail(row.offerRate)} · {formatRate(row.offerRate)}</dd></div>{warningFor(row) && <div><dt className="font-medium">Data note</dt><dd>{warningFor(row)}</dd></div>}</dl></article>)}</div>
+      <div className="mt-4 space-y-3 md:hidden">{rows.map((row) => <article key={row.key || row.label} className="rounded-lg border border-slate-200 p-4"><h3 className="font-semibold text-slate-900">{row.label}</h3><dl className="mt-3 space-y-2 text-sm text-slate-700"><div className="flex justify-between gap-3"><dt>Submitted</dt><dd>{row.submitted}</dd></div><div><dt className="font-medium">Interview progression</dt><dd>{formatRateWithDetail(row.interviewRate)}</dd></div><div><dt className="font-medium">Offer progression</dt><dd>{formatRateWithDetail(row.offerRate)}</dd></div>{warningFor(row) && <div><dt className="font-medium">Data note</dt><dd>{warningFor(row)}</dd></div>}</dl></article>)}</div>
     </>
   );
 }
