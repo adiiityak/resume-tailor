@@ -247,6 +247,24 @@ await check("suppresses out-of-order load success, error, and final settlement",
   assert.equal(coordinator.finishLoad(second), true);
 });
 
+await check("keeps the newer committed load authoritative after late older settlements", async () => {
+  const coordinator = createAnalyticsCoordinator();
+  const first = coordinator.beginLoad();
+  const second = coordinator.beginLoad();
+  const newerPayload = { skillGaps: [{ id: "gap", notes: "newer-authoritative" }] };
+
+  const committed = coordinator.commitLoadSuccess(second, newerPayload);
+  assert.equal(committed.accepted, true);
+  assert.equal(committed.data, newerPayload);
+  assert.equal(coordinator.finishLoad(second), true);
+
+  const lateSuccess = coordinator.commitLoadSuccess(first, { skillGaps: [{ id: "gap", notes: "older-late" }] });
+  assert.equal(lateSuccess.accepted, false);
+  assert.equal(lateSuccess.data, newerPayload);
+  assert.equal(coordinator.commitLoadError(first), false);
+  assert.equal(coordinator.finishLoad(first), false);
+});
+
 await check("cleanup invalidates a load before its deferred settlement", async () => {
   const coordinator = createAnalyticsCoordinator();
   const load = coordinator.beginLoad();
@@ -256,6 +274,33 @@ await check("cleanup invalidates a load before its deferred settlement", async (
   assert.equal(coordinator.commitLoadSuccess(load, { skillGaps: [] }).accepted, false);
   assert.equal(coordinator.commitLoadError(load), false);
   assert.equal(coordinator.finishLoad(load), false);
+});
+
+await check("rejects every late mutation settlement after cleanup invalidation", async () => {
+  const original = { id: "gap", notes: "before-cleanup" };
+  const coordinator = createAnalyticsCoordinator({ skillGaps: [original] });
+  const mutation = coordinator.beginSkillGapMutation("gap", { notes: "optimistic-before-cleanup" });
+  assert.ok(mutation);
+  const optimisticData = mutation.data;
+  const optimisticRecord = mutation.token.optimisticRecord;
+
+  assert.equal(coordinator.invalidateMutation(), true);
+
+  const lateSuccess = coordinator.commitMutationSuccess(mutation.token, { id: "gap", notes: "late-success" });
+  assert.equal(lateSuccess.accepted, false);
+  assert.equal(lateSuccess.data, optimisticData);
+  assert.equal(lateSuccess.data.skillGaps[0], optimisticRecord);
+
+  const lateFailure = coordinator.commitMutationFailure(mutation.token);
+  assert.equal(lateFailure.accepted, false);
+  assert.equal(lateFailure.data, optimisticData);
+  assert.equal(lateFailure.data.skillGaps[0], optimisticRecord);
+  assert.equal(coordinator.finishMutation(mutation.token), false);
+
+  const nextMutation = coordinator.beginSkillGapMutation("gap", { notes: "next-mutation" });
+  assert.ok(nextMutation);
+  assert.notEqual(nextMutation.token, mutation.token);
+  assert.equal(nextMutation.token.previousRecord, optimisticRecord);
 });
 
 await check("conditionally accepts optimistic success and isolated rollback", async () => {
@@ -481,6 +526,10 @@ await check("wires every analytics settlement and cleanup through lifecycle guar
   const cleanup = source.match(/return \(\) => \{([\s\S]*?)\n\s*\};\n\s*\}, \[loadAnalytics\]\);/);
   assert.ok(cleanup, "analytics effect cleanup should be structurally identifiable");
   assert.ok(cleanup[1].indexOf("invalidateLoad()") < cleanup[1].indexOf(".abort()"), "cleanup must invalidate the load before aborting it");
+  assert.ok(
+    cleanup[1].indexOf("invalidateMutation()") < cleanup[1].indexOf("activeMutationController?.abort()"),
+    "cleanup must invalidate the mutation before aborting it"
+  );
 });
 
 await check("wires roadmap settlement through mutation identity and revision guards", async () => {
