@@ -158,6 +158,25 @@ await check("wires Task 6 panels to the tested client safety contracts", async (
   assert.match(matchScores, /formatRateWithDetail\(row\.responseRate\)/);
 });
 
+await check("enforces both SkillGapEditor safety controls in the UI", async () => {
+  const editor = await readFile(fileURLToPath(new URL("../components/analytics/SkillGapEditor.js", import.meta.url)), "utf8");
+  const submitMatch = editor.match(/function submit\(event\)\s*\{([\s\S]*?)\n\s*\}\s*\n\s*return\s*\(/);
+  assert.ok(submitMatch, "SkillGapEditor submit handler should be structurally identifiable");
+
+  const submitBody = submitMatch[1];
+  const guardIndex = submitBody.indexOf("if (needsAllowedStatus) return;");
+  const saveIndex = submitBody.indexOf("onSave(");
+  assert.notEqual(guardIndex, -1, "submit should return when needsAllowedStatus");
+  assert.notEqual(saveIndex, -1, "submit should call onSave for allowed values");
+  assert.ok(guardIndex < saveIndex, "submit must return before calling onSave when needsAllowedStatus");
+
+  assert.match(
+    editor,
+    /<button\b(?=[^>]*\btype\s*=\s*["']submit["'])(?=[^>]*\bdisabled\s*=\s*\{\s*saving\s*\|\|\s*needsAllowedStatus\s*\})[^>]*>[\s\S]*?Save changes[\s\S]*?<\/button>/,
+    "Save changes should be disabled while saving or when needsAllowedStatus"
+  );
+});
+
 const chartPaths = [
   "components/analytics/ApplicationsTrendChart.js",
   "components/analytics/PipelineConversionChart.js",
