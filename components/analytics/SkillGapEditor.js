@@ -7,7 +7,7 @@ const IMPORTANCE_OPTIONS = ["High", "Medium", "Low"];
 const LEARNING_STATUS_OPTIONS = ["Not Started", "Learning", "Practising", "Used in Project", "Added to Portfolio", "Verified in Resume"];
 const LEARNING_EVIDENCE_NOTICE = "Learning progress does not count as resume evidence. Add and approve real evidence in Master Resume or Achievements first.";
 const focusClass = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2";
-const controlClass = `mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 ${focusClass}`;
+const controlClass = `mt-1 min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 ${focusClass}`;
 
 export default function SkillGapEditor({ record, saving = false, error, onSave, onCancel }) {
   const [importance, setImportance] = useState(record?.importance || "Medium");
@@ -35,7 +35,7 @@ export default function SkillGapEditor({ record, saving = false, error, onSave, 
       {record.evidenceLevel !== "Strong" && <p className="mt-3 text-sm text-slate-600">Verified in Resume is unavailable until this skill has Strong evidence.</p>}
       {needsAllowedStatus && <p className="mt-3 text-sm font-medium text-amber-800">The saved status is no longer supported by this evidence level. Choose another learning status before saving.</p>}
       <div role="alert" aria-live="assertive" className="mt-3 text-sm text-red-700">{error || ""}</div>
-      <div className="mt-4 flex flex-wrap gap-2"><button type="submit" disabled={saving || needsAllowedStatus} className={`rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60 ${focusClass}`}>{saving ? "Saving…" : "Save changes"}</button><button type="button" onClick={onCancel} disabled={saving} className={`rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 ${focusClass}`}>Cancel</button></div>
+      <div className="mt-4 flex flex-wrap gap-2"><button type="submit" disabled={saving || needsAllowedStatus} className={`min-h-11 rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60 ${focusClass}`}>{saving ? "Saving…" : "Save changes"}</button><button type="button" onClick={onCancel} disabled={saving} className={`min-h-11 rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 ${focusClass}`}>Cancel</button></div>
     </form>
   );
 }

@@ -495,6 +495,39 @@ async function readAnalyticsPage() {
   return readFile(fileURLToPath(new URL("../app/analytics/page.js", import.meta.url)), "utf8");
 }
 
+await check("gives analytics and shared mobile controls 44px touch targets", async () => {
+  const sources = await Promise.all([
+    readComponent("components/analytics/AnalyticsFilters.js"),
+    readComponent("components/analytics/ResumePerformance.js"),
+    readComponent("components/analytics/KeywordTrends.js"),
+    readComponent("components/analytics/SkillGapRoadmap.js"),
+    readComponent("components/analytics/SkillGapEditor.js"),
+    readComponent("components/analytics/AnalyticsEmptyState.js"),
+    readAnalyticsPage(),
+    readComponent("components/navigation/AppShell.js"),
+    readComponent("components/navigation/PrivacyModeBadge.js"),
+  ]);
+  const [filters, performance, keywords, roadmap, editor, emptyState, page, appShell, privacyBadge] = sources;
+
+  assert.match(filters, /const controlClass = `min-h-11/);
+  assert.match(filters, /const buttonClass = `min-h-11/);
+  assert.match(filters, /summary[^>]*min-h-11/);
+  assert.match(performance, /GROUPS\.map\([\s\S]*?className=\{`min-h-11/);
+  assert.match(keywords, /const controlClass = `min-h-11/);
+  assert.match(roadmap, /<button[^>]*min-w-11[^>]*>Edit<\/button>/);
+  assert.match(editor, /const controlClass = `mt-1 min-h-11/);
+  assert.match(editor, /type="submit"[^>]*className=\{`min-h-11/);
+  assert.match(editor, /type="button"[^>]*className=\{`min-h-11/);
+  assert.match(emptyState, /actions\.map\([\s\S]*?inline-flex min-h-11/);
+  assert.match(page, /Retry[\s\S]*?<\/button>/);
+  assert.match(page, /className="mt-4 min-h-11[^>]*"\s*>\s*Retry/);
+  assert.match(appShell, /aria-label="Open navigation menu"[\s\S]*?min-h-11 min-w-11/);
+  assert.match(appShell, /aria-label="Close menu"[\s\S]*?min-h-11 min-w-11/);
+  assert.match(appShell, /mobile \? "min-h-11" : ""/);
+  assert.match(appShell, /<NavLinks pathname=\{pathname\} onNavigate=\{\(\) => setDrawerOpen\(false\)\} mobile \/>/);
+  assert.match(privacyBadge, /min-h-11/);
+});
+
 await check("replaces PlannedPage with a client analytics controller", async () => {
   const source = await readAnalyticsPage();
   assert.match(source, /^\s*["']use client["'];/);

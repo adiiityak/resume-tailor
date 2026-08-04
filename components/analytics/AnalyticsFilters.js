@@ -11,8 +11,8 @@ function normalizedFilters(filters) {
 }
 
 const focusClass = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2";
-const controlClass = `w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm ${focusClass}`;
-const buttonClass = `rounded-lg px-4 py-2 text-sm font-medium shadow-sm disabled:cursor-wait disabled:opacity-60 ${focusClass}`;
+const controlClass = `min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm ${focusClass}`;
+const buttonClass = `min-h-11 rounded-lg px-4 py-2 text-sm font-medium shadow-sm disabled:cursor-wait disabled:opacity-60 ${focusClass}`;
 
 function SelectField({ idPrefix, field, label, options, value, onChange }) {
   return (
@@ -83,7 +83,7 @@ function AnalyticsFiltersForm({ filters, options, refreshing, onApply, onClear }
     <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm" aria-labelledby="analytics-filters-title">
       <h2 id="analytics-filters-title" className="text-base font-semibold text-slate-900">Filter metrics</h2>
       <details className="mt-3 lg:hidden">
-        <summary className={`cursor-pointer text-sm font-medium text-blue-700 ${focusClass}`}>Show filters</summary>
+        <summary className={`min-h-11 cursor-pointer py-3 text-sm font-medium text-blue-700 ${focusClass}`}>Show filters</summary>
         <div className="mt-4"><FilterForm idPrefix="mobile" {...formProps} /></div>
       </details>
       <div className="mt-4 hidden lg:block"><FilterForm idPrefix="desktop" {...formProps} /></div>

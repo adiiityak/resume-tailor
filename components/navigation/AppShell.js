@@ -12,7 +12,7 @@ function isActive(pathname, item) {
   return pathname === item.href || pathname.startsWith(item.href + "/");
 }
 
-function NavLinks({ pathname, onNavigate }) {
+function NavLinks({ pathname, onNavigate, mobile = false }) {
   return (
     <nav className="flex flex-col gap-0.5" aria-label="Primary">
       {NAV_ITEMS.map((item) => {
@@ -23,7 +23,7 @@ function NavLinks({ pathname, onNavigate }) {
             href={item.href}
             onClick={onNavigate}
             aria-current={active ? "page" : undefined}
-            className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${
+            className={`flex ${mobile ? "min-h-11" : ""} items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 ${
               active ? "bg-slate-900 text-white shadow-sm" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
             }`}
           >
@@ -67,7 +67,7 @@ export default function AppShell({ children, authEnabled = false }) {
           <button
             onClick={() => setDrawerOpen(true)}
             aria-label="Open navigation menu"
-            className="rounded-md p-1.5 text-slate-600 hover:bg-slate-100"
+            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
           >
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
               <path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" />
@@ -84,11 +84,11 @@ export default function AppShell({ children, authEnabled = false }) {
             <div className="absolute left-0 top-0 h-full w-64 border-r border-slate-200 bg-white px-3 py-4 shadow-xl">
               <div className="mb-5 flex items-center justify-between px-2">
                 <span className="text-base font-semibold text-slate-900">Resume Tailor</span>
-                <button onClick={() => setDrawerOpen(false)} aria-label="Close menu" className="rounded-md p-1 text-slate-500 hover:bg-slate-100">
+                <button onClick={() => setDrawerOpen(false)} aria-label="Close menu" className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" strokeLinecap="round" /></svg>
                 </button>
               </div>
-              <NavLinks pathname={pathname} onNavigate={() => setDrawerOpen(false)} />
+              <NavLinks pathname={pathname} onNavigate={() => setDrawerOpen(false)} mobile />
               {authEnabled && <div className="mt-6 px-2"><AuthAccount /></div>}
             </div>
           </div>

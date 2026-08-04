@@ -43,7 +43,7 @@ export default function ResumePerformance({ data = {} }) {
       <h2 id="resume-performance-title" className="text-lg font-semibold text-slate-900">Resume performance</h2>
       <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">{CAUSATION_NOTICE}</p>
       <div className="mt-4 flex flex-wrap gap-2" aria-label="Resume performance grouping">
-        {GROUPS.map(([key, label]) => <button key={key} type="button" onClick={() => setActiveGroup(key)} aria-pressed={activeGroup === key} className={`rounded-lg px-3 py-2 text-sm font-medium ${focusClass} ${activeGroup === key ? "bg-blue-700 text-white" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}>{label}</button>)}
+        {GROUPS.map(([key, label]) => <button key={key} type="button" onClick={() => setActiveGroup(key)} aria-pressed={activeGroup === key} className={`min-h-11 rounded-lg px-3 py-2 text-sm font-medium ${focusClass} ${activeGroup === key ? "bg-blue-700 text-white" : "border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}>{label}</button>)}
       </div>
       <p className="sr-only" aria-live="polite">Showing {GROUPS.find(([key]) => key === activeGroup)?.[1]} performance.</p>
       <PerformanceRows rows={rows} />

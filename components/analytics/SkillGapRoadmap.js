@@ -12,7 +12,7 @@ function RelatedJobs({ jobs = [] }) {
 }
 
 function EditButton({ onClick }) {
-  return <button type="button" onClick={onClick} className={`rounded-lg border border-blue-700 bg-white px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50 ${focusClass}`}>Edit</button>;
+  return <button type="button" onClick={onClick} className={`inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-blue-700 bg-white px-3 py-1.5 text-sm font-medium text-blue-700 hover:bg-blue-50 ${focusClass}`}>Edit</button>;
 }
 
 export default function SkillGapRoadmap({ records = [], updatingId, onUpdate }) {

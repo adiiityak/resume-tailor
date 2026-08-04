@@ -5,7 +5,7 @@ export default function AnalyticsEmptyState({ title, message, actions = [] }) {
       <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-slate-600">{message}</p>
       {actions.length > 0 && (
         <nav className="mt-5 flex flex-wrap justify-center gap-3" aria-label="Analytics next steps">
-          {actions.map((action) => <a key={action.href} href={action.href} className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">{action.label}</a>)}
+          {actions.map((action) => <a key={action.href} href={action.href} className="inline-flex min-h-11 items-center justify-center rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2">{action.label}</a>)}
         </nav>
       )}
     </section>

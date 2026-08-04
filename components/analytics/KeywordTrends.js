@@ -5,7 +5,7 @@ import { filterKeywordTrends, formatRate } from "@/lib/analytics/client";
 import EvidenceBadge from "./EvidenceBadge";
 
 const focusClass = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2";
-const controlClass = `w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 ${focusClass}`;
+const controlClass = `min-h-11 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 ${focusClass}`;
 
 export default function KeywordTrends({ trends = [] }) {
   const [category, setCategory] = useState("");
