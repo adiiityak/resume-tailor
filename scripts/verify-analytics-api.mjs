@@ -4,15 +4,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { parseAnalyticsFilters } from "../lib/analytics/filters.js";
 import { ANALYTICS_DEFINITIONS, getAnalytics } from "../lib/analytics.js";
-import {
-  createAnalyticsGetHandler,
-  GET as getAnalyticsRoute,
-  dynamic,
-} from "../app/api/analytics/route.js";
-import {
-  createSkillGapPatchHandler,
-  PATCH as patchSkillGapRoute,
-} from "../app/api/skill-gaps/[id]/route.js";
+import { createAnalyticsGetHandler, createSkillGapPatchHandler } from "../lib/analytics/routeHandlers.js";
+import { GET as getAnalyticsRoute, dynamic } from "../app/api/analytics/route.js";
+import { PATCH as patchSkillGapRoute } from "../app/api/skill-gaps/[id]/route.js";
+import * as analyticsRouteModule from "../app/api/analytics/route.js";
+import * as skillGapRouteModule from "../app/api/skill-gaps/[id]/route.js";
 
 let passed = 0;
 let failed = 0;
@@ -349,6 +345,17 @@ check(
 );
 
 console.log("route validation and cache policy");
+check(
+  "analytics route exports only its HTTP handler and supported config",
+  same(Object.keys(analyticsRouteModule).sort(), ["GET", "dynamic"]),
+  JSON.stringify(Object.keys(analyticsRouteModule).sort())
+);
+check(
+  "skill-gap route exports only its HTTP handler",
+  same(Object.keys(skillGapRouteModule).sort(), ["PATCH"]),
+  JSON.stringify(Object.keys(skillGapRouteModule).sort())
+);
+
 const successfulGetHandler = createAnalyticsGetHandler(async (filters) => ({ kind: "aggregate", filters }));
 const successfulGet = await successfulGetHandler(new Request("http://localhost/api/analytics?company=Google"));
 const successfulGetBody = await successfulGet.json();
