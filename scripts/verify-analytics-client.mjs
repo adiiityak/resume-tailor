@@ -122,6 +122,60 @@ await check("formats average response time with one fractional digit or an em da
   assert.match(source, /value: formatAverageResponseDays\(summary\.averageResponseDays\)/);
 });
 
+const taskSixComponentPaths = [
+  "components/analytics/MatchScorePatterns.js",
+  "components/analytics/ResumePerformance.js",
+  "components/analytics/EvidenceBadge.js",
+  "components/analytics/KeywordTrends.js",
+  "components/analytics/SkillGapRoadmap.js",
+  "components/analytics/SkillGapEditor.js",
+  "components/analytics/MetricDefinitions.js",
+  "components/analytics/DataQualityNotice.js",
+];
+
+async function readComponent(componentPath) {
+  const fileUrl = new URL(`../${componentPath}`, import.meta.url);
+  return readFile(fileURLToPath(fileUrl), "utf8");
+}
+
+await check("includes every Task 6 analytics panel", async () => {
+  await Promise.all(taskSixComponentPaths.map(readComponent));
+});
+
+await check("renders evidence levels as readable labels rather than color alone", async () => {
+  const source = await readComponent("components/analytics/EvidenceBadge.js");
+  for (const label of ["Strong evidence", "Partial evidence", "Weak evidence", "No evidence"]) {
+    assert.match(source, new RegExp(label));
+  }
+  assert.match(source, /aria-label/);
+});
+
+await check("makes the performance minimum-data warning visible with its approved wording", async () => {
+  const source = await readComponent("components/analytics/ResumePerformance.js");
+  assert.match(source, /Not enough applications to identify a reliable pattern\./);
+  assert.match(source, /Patterns describe your current records\. They do not prove that a resume design, profile, or match score caused an outcome\./);
+});
+
+await check("associates roadmap editor controls with visible labels", async () => {
+  const [roadmap, editor] = await Promise.all([
+    readComponent("components/analytics/SkillGapRoadmap.js"),
+    readComponent("components/analytics/SkillGapEditor.js"),
+  ]);
+  assert.match(roadmap, /<button[^>]*>\s*Edit\s*<\/button>/);
+  for (const field of ["importance", "learningStatus", "notes", "portfolioOpportunity"]) {
+    assert.match(editor, new RegExp(`<label[^>]*htmlFor=["']skill-gap-${field}["']`));
+    assert.match(editor, new RegExp(`id=["']skill-gap-${field}["']`));
+  }
+});
+
+await check("limits the editor to approved importance and learning-status values", async () => {
+  const source = await readComponent("components/analytics/SkillGapEditor.js");
+  assert.match(source, /const IMPORTANCE_OPTIONS = \["High", "Medium", "Low"\];/);
+  assert.match(source, /const LEARNING_STATUS_OPTIONS = \["Not Started", "Learning", "Practising", "Used in Project", "Added to Portfolio", "Verified in Resume"\];/);
+  assert.match(source, /record\.evidenceLevel !== "Strong"/);
+  assert.match(source, /Learning progress does not count as resume evidence\. Add and approve real evidence in Master Resume or Achievements first\./);
+});
+
 if (failures.length) {
   console.error(`\n${failures.length} analytics client verification failure${failures.length === 1 ? "" : "s"}.`);
   process.exitCode = 1;
