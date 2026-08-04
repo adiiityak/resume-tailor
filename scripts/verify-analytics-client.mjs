@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
+import { compileFunction } from "node:vm";
+import { build } from "esbuild";
 
 import {
   FILTER_ORDER,
@@ -19,6 +22,40 @@ import {
 } from "../lib/analytics/client.js";
 
 const failures = [];
+const projectRoot = fileURLToPath(new URL("..", import.meta.url));
+const localRequire = createRequire(import.meta.url);
+
+async function renderComponent(componentPath, props) {
+  const absoluteComponentPath = fileURLToPath(new URL(`../${componentPath}`, import.meta.url));
+  const result = await build({
+    stdin: {
+      contents: `
+        import React from "react";
+        import { renderToStaticMarkup } from "react-dom/server";
+        import Component from ${JSON.stringify(absoluteComponentPath)};
+        module.exports = (componentProps) => renderToStaticMarkup(React.createElement(Component, componentProps));
+      `,
+      resolveDir: projectRoot,
+      sourcefile: "analytics-component-render.jsx",
+      loader: "jsx",
+    },
+    alias: { "@": projectRoot },
+    bundle: true,
+    format: "cjs",
+    jsx: "automatic",
+    loader: { ".js": "jsx" },
+    logLevel: "silent",
+    platform: "node",
+    write: false,
+  });
+  const compiledModule = { exports: {} };
+  const evaluate = compileFunction(
+    result.outputFiles[0].text,
+    ["require", "module", "exports", "__filename", "__dirname"]
+  );
+  evaluate(localRequire, compiledModule, compiledModule.exports, "analytics-component-render.cjs", projectRoot);
+  return compiledModule.exports(props);
+}
 
 function fallbackListIsNestedInImageRole(source) {
   const stack = [];
@@ -111,6 +148,114 @@ await check("filters keyword trends without mutating or reordering backend resul
   );
   assert.deepEqual(trends, before);
   assert.equal(filterKeywordTrends(trends, { category: "Missing" }).length, 0);
+});
+
+await check("filters roadmap records across all local controls without mutating order or edit identity", async () => {
+  const { createEmptySkillGapFilters, filterSkillGaps } = await import("../lib/analytics/client.js");
+  assert.equal(typeof createEmptySkillGapFilters, "function");
+  assert.equal(typeof filterSkillGaps, "function");
+
+  const first = Object.freeze({
+    id: "gap-product-analytics",
+    skill: "Product analytics",
+    evidenceLevel: "None",
+    learningStatus: "Learning",
+    importance: "High",
+    category: "Tools",
+    notes: "Build a real dashboard",
+    portfolioOpportunity: "Analytics case study",
+    relatedJobs: [{ company: "Acme", role: "Product Designer" }],
+  });
+  const second = Object.freeze({
+    id: "gap-research",
+    skill: "User research",
+    evidenceLevel: "Partial",
+    learningStatus: "Not Started",
+    importance: "Medium",
+    category: "Skills",
+    notes: "",
+    portfolioOpportunity: "",
+    relatedJobs: [],
+  });
+  const third = Object.freeze({
+    id: "gap-figma",
+    skill: "Figma",
+    evidenceLevel: "Strong",
+    learningStatus: "Verified in Resume",
+    importance: "Low",
+    category: "Tools",
+    notes: "Approved evidence exists",
+    portfolioOpportunity: "",
+    relatedJobs: [],
+  });
+  const records = Object.freeze([first, second, third]);
+  const filters = Object.freeze({
+    evidenceLevel: "None",
+    learningStatus: "Learning",
+    importance: "High",
+    category: "Tools",
+    search: "case STUDY",
+  });
+
+  const exact = filterSkillGaps(records, filters);
+  assert.deepEqual(exact, [first]);
+  assert.equal(exact[0], first, "filtering must preserve record identity for editing");
+
+  const tools = filterSkillGaps(records, { category: "Tools" });
+  assert.deepEqual(tools, [first, third]);
+  assert.equal(tools[0], first);
+  assert.equal(tools[1], third);
+  assert.deepEqual(records, [first, second, third]);
+  assert.deepEqual(filters, {
+    evidenceLevel: "None",
+    learningStatus: "Learning",
+    importance: "High",
+    category: "Tools",
+    search: "case STUDY",
+  });
+
+  const resetFilters = createEmptySkillGapFilters();
+  assert.deepEqual(resetFilters, { evidenceLevel: "", learningStatus: "", importance: "", category: "", search: "" });
+  assert.deepEqual(filterSkillGaps(records, resetFilters), [first, second, third]);
+});
+
+await check("distinguishes missing keyword source data from a local zero-result filter", async () => {
+  const { keywordTrendsEmptyMessage } = await import("../lib/analytics/client.js");
+  assert.equal(typeof keywordTrendsEmptyMessage, "function");
+  assert.equal(
+    keywordTrendsEmptyMessage({ analyzedJobDescriptions: 0, trendCount: 0, filteredCount: 0 }),
+    "Keyword analysis needs saved job descriptions. Add a description to a saved job or application to see demand trends."
+  );
+  assert.equal(
+    keywordTrendsEmptyMessage({ analyzedJobDescriptions: 4, trendCount: 2, filteredCount: 0 }),
+    "No keyword trends match these local filters."
+  );
+  assert.equal(
+    keywordTrendsEmptyMessage({ analyzedJobDescriptions: 4, trendCount: 0, filteredCount: 0 }),
+    "No keyword trends were identified in the analyzed job descriptions."
+  );
+});
+
+await check("announces only successful preserved-data refreshes as complete", async () => {
+  const { refreshAnnouncement } = await import("../lib/analytics/client.js");
+  assert.equal(typeof refreshAnnouncement, "function");
+  const coordinator = createAnalyticsCoordinator({ skillGaps: [] });
+  const failedRefresh = coordinator.beginLoad();
+  assert.equal(coordinator.commitLoadError(failedRefresh), true);
+  assert.equal(coordinator.finishLoad(failedRefresh), true);
+  assert.equal(refreshAnnouncement({ preserveData: true, outcome: "failure" }), "Analytics refresh failed.");
+  assert.equal(refreshAnnouncement({ preserveData: true, outcome: "success" }), "Analytics refresh complete.");
+  assert.equal(refreshAnnouncement({ preserveData: false, outcome: "failure" }), "");
+  assert.equal(refreshAnnouncement({ preserveData: true, outcome: "stale" }), "");
+});
+
+await check("labels only frequency-one roadmap gaps as emerging", async () => {
+  const { skillGapFrequencyLabel } = await import("../lib/analytics/client.js");
+  assert.equal(typeof skillGapFrequencyLabel, "function");
+  assert.equal(skillGapFrequencyLabel(1), "Emerging");
+  assert.equal(skillGapFrequencyLabel(2), "Recurring");
+  assert.equal(skillGapFrequencyLabel(0), "");
+  assert.equal(skillGapFrequencyLabel(null), "");
 });
 
 await check("builds an exact four-field skill-gap patch", () => {
@@ -360,6 +505,133 @@ await check("wires Task 6 panels to the tested client safety contracts", async (
   assert.match(matchScores, /formatRateWithDetail\(row\.responseRate\)/);
 });
 
+await check("renders every backend breakdown with responsive semantic outcome progressions", async () => {
+  const breakdowns = {
+    roles: [{
+      key: "designer",
+      label: "Product Designer",
+      count: 7,
+      submitted: 5,
+      responses: 2,
+      interviews: 1,
+      offers: 1,
+      responseRate: { numerator: 2, denominator: 5, value: 63 },
+      interviewRate: { numerator: 1, denominator: 5, value: 41 },
+      offerRate: { numerator: 1, denominator: 5, value: 19 },
+    }],
+    companies: [{
+      key: "acme",
+      label: "Acme",
+      count: 4,
+      submitted: 4,
+      responses: 3,
+      interviews: 2,
+      offers: 1,
+      responseRate: { numerator: 3, denominator: 4, value: 72 },
+      interviewRate: { numerator: 2, denominator: 4, value: 48 },
+      offerRate: { numerator: 1, denominator: 4, value: 26 },
+    }],
+    sources: [{
+      key: "referral",
+      label: "Referral",
+      count: 3,
+      submitted: 2,
+      responses: 1,
+      interviews: 1,
+      offers: 0,
+      responseRate: { numerator: 1, denominator: 2, value: 54 },
+      interviewRate: { numerator: 1, denominator: 2, value: 46 },
+      offerRate: { numerator: 0, denominator: 2, value: 7 },
+    }],
+  };
+  const html = await renderComponent("components/analytics/ApplicationBreakdowns.js", { breakdowns });
+
+  for (const text of ["By role", "By company", "By source", "Product Designer", "Acme", "Referral"]) {
+    assert.ok(html.includes(text), `rendered breakdowns should include ${text}`);
+  }
+  assert.match(html, /<table\b/);
+  assert.match(html, /<th scope="col"/);
+  assert.match(html, /<article\b/);
+  assert.ok(html.includes("2 responses · 2 of 5 submitted applications · 63%"), "response count and rate must use the backend rate object");
+  assert.ok(html.includes("1 interview · 1 of 5 submitted applications · 41%"), "interview count and rate must use the backend rate object");
+  assert.ok(html.includes("1 offer · 1 of 5 submitted applications · 19%"), "offer count and rate must use the backend rate object");
+  assert.ok(html.includes("0 offers · 0 of 2 submitted applications · 7%"), "zero outcome counts must remain visible with backend rates");
+});
+
+await check("renders every sub-five match-score warning when the overall total is larger", async () => {
+  const warning = "Not enough applications to identify a reliable pattern.";
+  const rate = (numerator, value) => ({ numerator, denominator: 3, value });
+  const html = await renderComponent("components/analytics/MatchScorePatterns.js", {
+    data: [
+      { label: "70–79", submitted: 3, responses: 2, interviews: 1, responseRate: rate(2, 67), interviewRate: rate(1, 33), warning },
+      { label: "80–89", submitted: 3, responses: 1, interviews: 1, responseRate: rate(1, 33), interviewRate: rate(1, 33), warning },
+    ],
+  });
+  assert.equal((html.match(/Not enough applications to identify a reliable pattern\./g) || []).length, 4);
+  assert.match(html, /<th scope="col"[^>]*>Data note<\/th>/);
+  assert.match(html, /<dt[^>]*>Data note<\/dt>/);
+});
+
+await check("renders response, interview, and offer progression from resume backend rate objects", async () => {
+  const html = await renderComponent("components/analytics/ResumePerformance.js", {
+    data: {
+      variants: [{
+        key: "v4",
+        label: "V4",
+        submitted: 5,
+        responses: 2,
+        interviews: 1,
+        offers: 1,
+        responseRate: { numerator: 2, denominator: 5, value: 63 },
+        interviewRate: { numerator: 1, denominator: 5, value: 41 },
+        offerRate: { numerator: 1, denominator: 5, value: 19 },
+        warning: null,
+      }],
+      profiles: [],
+      versions: [],
+      modes: [],
+    },
+  });
+  assert.ok(html.includes("Response progression"));
+  assert.ok(html.includes("Interview progression"));
+  assert.ok(html.includes("Offer progression"));
+  assert.ok(html.includes("2 of 5 submitted applications · 63%"));
+  assert.ok(html.includes("1 of 5 submitted applications · 41%"));
+  assert.ok(html.includes("1 of 5 submitted applications · 19%"));
+});
+
+await check("renders the dedicated no-description keyword state", async () => {
+  const html = await renderComponent("components/analytics/KeywordTrends.js", {
+    trends: [],
+    analyzedJobDescriptions: 0,
+  });
+  assert.ok(html.includes("Keyword analysis needs saved job descriptions."));
+  assert.ok(!html.includes("No keyword trends match these local filters."));
+});
+
+await check("renders emerging and recurring roadmap labels without overstating one-off gaps", async () => {
+  const base = {
+    evidenceLevel: "None",
+    importance: "Medium",
+    learningStatus: "Not Started",
+    notes: "",
+    relatedJobs: [],
+    portfolioOpportunity: "",
+  };
+  const html = await renderComponent("components/analytics/SkillGapRoadmap.js", {
+    records: [
+      { ...base, id: "skill-gap-emerging", skill: "Product analytics", category: "Tools", frequency: 1 },
+      { ...base, id: "skill-gap-recurring", skill: "User research", category: "Skills", frequency: 2 },
+    ],
+    updatingId: null,
+    onUpdate: () => {},
+  });
+  assert.equal((html.match(/>Emerging</g) || []).length, 2);
+  assert.equal((html.match(/>Recurring</g) || []).length, 2);
+  assert.ok(html.includes("recurring and emerging requirements"));
+  assert.ok(!html.includes("Review repeated requirements"));
+});
+
 await check("enforces both SkillGapEditor safety controls in the UI", async () => {
   const editor = await readFile(fileURLToPath(new URL("../components/analytics/SkillGapEditor.js", import.meta.url)), "utf8");
   const submitMatch = editor.match(/function submit\(event\)\s*\{([\s\S]*?)\n\s*\}\s*\n\s*return\s*\(/);
@@ -414,6 +686,7 @@ await check("formats average response time with one fractional digit or an em da
 });
 
 const taskSixComponentPaths = [
+  "components/analytics/ApplicationBreakdowns.js",
   "components/analytics/MatchScorePatterns.js",
   "components/analytics/ResumePerformance.js",
   "components/analytics/EvidenceBadge.js",
@@ -459,6 +732,30 @@ await check("associates roadmap editor controls with visible labels", async () =
   }
 });
 
+await check("provides all labeled roadmap filters, a 44px reset, and filtered render wiring", async () => {
+  const roadmap = await readComponent("components/analytics/SkillGapRoadmap.js");
+  const html = await renderComponent("components/analytics/SkillGapRoadmap.js", {
+    records: [],
+    updatingId: null,
+    onUpdate: () => {},
+  });
+  for (const [field, label] of [
+    ["search", "Search roadmap"],
+    ["evidenceLevel", "Evidence level"],
+    ["learningStatus", "Learning status"],
+    ["importance", "Importance"],
+    ["category", "Category"],
+  ]) {
+    assert.match(html, new RegExp(`<label[^>]*for="skill-gap-filter-${field}"[^>]*>${label}</label>`));
+    assert.match(html, new RegExp(`id="skill-gap-filter-${field}"`));
+  }
+  assert.match(roadmap, /filterSkillGaps\(records, filters\)/);
+  assert.match(roadmap, /filteredRecords\.map\(/);
+  assert.match(roadmap, /editingRecord = records\.find\(/);
+  assert.match(roadmap, /Reset roadmap filters/);
+  assert.match(roadmap, /min-h-11/);
+});
+
 await check("keeps the roadmap editor outside responsive record layouts with one error live region", async () => {
   const [roadmap, editor] = await Promise.all([
     readComponent("components/analytics/SkillGapRoadmap.js"),
@@ -484,6 +781,7 @@ const taskSevenPanelNames = [
   "ApplicationsTrendChart",
   "PipelineConversionChart",
   "DistributionChart",
+  "ApplicationBreakdowns",
   "MatchScorePatterns",
   "ResumePerformance",
   "KeywordTrends",
@@ -616,7 +914,17 @@ await check("keeps filters mounted and exposes persistent polite refresh status"
   assert.match(page, /role=["']status["']/);
   assert.match(page, /aria-live=["']polite["']/);
   assert.match(page, /Refreshing analytics/);
-  assert.match(page, /Analytics refresh complete/);
+  assert.match(page, /refreshAnnouncement/);
+});
+
+await check("wires refresh announcements to the active load outcome instead of finally-only success", async () => {
+  const page = await readAnalyticsPage();
+  assert.match(page, /refreshAnnouncement/);
+  assert.match(page, /let loadOutcome = "stale";/);
+  assert.match(page, /loadOutcome = "success";/);
+  assert.match(page, /loadOutcome = "failure";/);
+  assert.match(page, /setRefreshStatus\(refreshAnnouncement\(\{ preserveData, outcome: loadOutcome \}\)\)/);
+  assert.doesNotMatch(page, /if \(preserveData\) setRefreshStatus\("Analytics refresh complete\."\)/);
 });
 
 await check("renders actionable loading, initial-error, empty, partial, and populated states", async () => {
@@ -640,6 +948,12 @@ await check("composes every approved panel in the required order", async () => {
     assert.ok(panelIndex > previousIndex, `${panelName} should render after the preceding approved panel`);
     previousIndex = panelIndex;
   }
+});
+
+await check("wires backend breakdowns and analyzed-description context into their renderers", async () => {
+  const source = await readAnalyticsPage();
+  assert.match(source, /<ApplicationBreakdowns breakdowns=\{data\.breakdowns\} \/>/);
+  assert.match(source, /<KeywordTrends trends=\{data\.keywordTrends\} analyzedJobDescriptions=\{data\.dataQuality\?\.analyzedJobDescriptions\} \/>/);
 });
 
 await check("sends safe optimistic skill-gap updates through the encoded PATCH route", async () => {

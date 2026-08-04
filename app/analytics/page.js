@@ -6,6 +6,7 @@ import AnalyticsFilters from "@/components/analytics/AnalyticsFilters";
 import AnalyticsHeader from "@/components/analytics/AnalyticsHeader";
 import AnalyticsLoadingState from "@/components/analytics/AnalyticsLoadingState";
 import AnalyticsSummary from "@/components/analytics/AnalyticsSummary";
+import ApplicationBreakdowns from "@/components/analytics/ApplicationBreakdowns";
 import ApplicationsTrendChart from "@/components/analytics/ApplicationsTrendChart";
 import DataQualityNotice from "@/components/analytics/DataQualityNotice";
 import DistributionChart from "@/components/analytics/DistributionChart";
@@ -21,6 +22,7 @@ import {
   buildSkillGapPatch,
   buildSkillGapRequest,
   createAnalyticsCoordinator,
+  refreshAnnouncement,
 } from "@/lib/analytics/client";
 
 const EMPTY_FILTERS = Object.freeze({
@@ -67,6 +69,7 @@ export default function AnalyticsPage() {
     setLoading(!preserveData);
     setRefreshing(preserveData);
     setRefreshStatus(preserveData ? "Refreshing analytics…" : "");
+    let loadOutcome = "stale";
 
     try {
       const request = buildAnalyticsRequest(nextFilters, controller.signal);
@@ -78,6 +81,7 @@ export default function AnalyticsPage() {
 
       const result = coordinator.current.commitLoadSuccess(loadToken, payload);
       if (!result.accepted) return;
+      loadOutcome = "success";
 
       if (result.mutationInvalidated) {
         const activeMutationController = mutationController.current;
@@ -89,13 +93,14 @@ export default function AnalyticsPage() {
       setData(result.data);
     } catch (requestError) {
       if (!coordinator.current.commitLoadError(loadToken)) return;
+      loadOutcome = "failure";
       setError(requestError instanceof Error && requestError.message ? requestError.message : LOAD_ERROR);
     } finally {
       if (coordinator.current.finishLoad(loadToken)) {
         if (requestController.current === controller) requestController.current = null;
         setLoading(false);
         setRefreshing(false);
-        if (preserveData) setRefreshStatus("Analytics refresh complete.");
+        setRefreshStatus(refreshAnnouncement({ preserveData, outcome: loadOutcome }));
       }
     }
   }, []);
@@ -224,9 +229,10 @@ export default function AnalyticsPage() {
               <PipelineConversionChart data={data.pipeline} />
               <DistributionChart title="Current status" data={data.statusDistribution} />
             </div>
+            <ApplicationBreakdowns breakdowns={data.breakdowns} />
             <MatchScorePatterns data={data.matchScorePatterns} />
             <ResumePerformance data={data.resumePerformance} />
-            <KeywordTrends trends={data.keywordTrends} />
+            <KeywordTrends trends={data.keywordTrends} analyzedJobDescriptions={data.dataQuality?.analyzedJobDescriptions} />
             <SkillGapRoadmap records={data.skillGaps} updatingId={updatingId} onUpdate={updateSkillGap} />
             <MetricDefinitions definitions={data.definitions} />
           </div>
