@@ -104,6 +104,32 @@ check(
   JSON.stringify(result.trends)
 );
 
+const linkedEdited = analyzeKeywordTrends({
+  jobs: [{
+    id: "job-linked",
+    applicationId: "application-linked",
+    company: "Linked Co",
+    role: "Product Designer",
+    jobDescription: "Figma and product analytics are required.",
+  }],
+  applicationJobs: [{
+    id: "application-linked",
+    company: "Linked Co",
+    role: "Product Designer",
+    jobDescription: "Figma, product analytics, and leadership are required after an application edit.",
+  }],
+});
+const linkedTerms = new Map(linkedEdited.trends.map((trend) => [trend.term, trend]));
+check(
+  "excludes linked application text before hash deduplication even when the text was edited",
+  linkedEdited.analyzedJobDescriptions === 1 &&
+    linkedTerms.get("Figma")?.count === 1 &&
+    linkedTerms.get("Product analytics")?.count === 1 &&
+    !linkedTerms.has("Leadership") &&
+    linkedTerms.get("Figma")?.relatedJobs[0]?.id === "job-linked",
+  JSON.stringify(linkedEdited)
+);
+
 console.log("conservative evidence classification");
 check(
   "recognizes configured related evidence as partial without a direct phrase",

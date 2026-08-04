@@ -9,6 +9,7 @@ import { GET as getAnalyticsRoute, dynamic } from "../app/api/analytics/route.js
 import { PATCH as patchSkillGapRoute } from "../app/api/skill-gaps/[id]/route.js";
 import * as analyticsRouteModule from "../app/api/analytics/route.js";
 import * as skillGapRouteModule from "../app/api/skill-gaps/[id]/route.js";
+import * as skillGapsFs from "../lib/store/skillGaps.fs.js";
 
 let passed = 0;
 let failed = 0;
@@ -344,6 +345,47 @@ check(
   })
 );
 
+let projectionCalls = 0;
+let legacyListCalls = 0;
+const boundaryDependencies = {
+  async loadAnalyticsApplications() {
+    projectionCalls += 1;
+    return { applications: [], corrupted: 0 };
+  },
+  async listApplications() {
+    legacyListCalls += 1;
+    return { summary: { corrupted: 0 }, companies: [] };
+  },
+  async listJobs() {
+    return {
+      jobs: [
+        { id: "job-start", company: "A", role: "Designer", dateSaved: "2026-08-04T00:00:00.000Z", jobDescription: "Figma." },
+        { id: "job-end", company: "B", role: "Designer", dateSaved: "2026-08-04T23:59:59.999Z", jobDescription: "React." },
+        { id: "job-before", company: "C", role: "Designer", dateSaved: "2026-08-03T23:59:59.999Z", jobDescription: "SQL." },
+        { id: "job-after", company: "D", role: "Designer", dateSaved: "2026-08-05T00:00:00.000Z", jobDescription: "Python." },
+      ],
+      corrupted: 0,
+    };
+  },
+  async getMaster() { return { entries: [], corrupted: 0 }; },
+  async listAchievements() { return { achievements: [], corrupted: 0 }; },
+  async listReminders() { return { reminders: [], corrupted: 0 }; },
+  async listSkillGaps() { return { skillGaps: [], corrupted: 0 }; },
+  async syncSkillGaps(gaps) { return { skillGaps: gaps, corrupted: 0 }; },
+};
+const boundaryFiltered = await getAnalytics({ ...EMPTY_FILTERS, from: "2026-08-04", to: "2026-08-04" }, boundaryDependencies);
+check(
+  "includes real ISO dateSaved timestamps at both UTC filter boundaries",
+  boundaryFiltered.summary.totalJobsSaved === 2 &&
+    boundaryFiltered.dataQuality.analyzedJobDescriptions === 2,
+  JSON.stringify({ summary: boundaryFiltered.summary, dataQuality: boundaryFiltered.dataQuality })
+);
+check(
+  "prefers the bounded analytics application projection when the dependency supplies it",
+  projectionCalls === 1 && legacyListCalls === 0,
+  JSON.stringify({ projectionCalls, legacyListCalls })
+);
+
 console.log("route validation and cache policy");
 check(
   "analytics route exports only its HTTP handler and supported config",
@@ -371,25 +413,27 @@ const failedGet = await withoutExpectedErrorLog(() => failedGetHandler(new Reque
 const failedGetBody = await failedGet.json();
 check(
   "analytics GET maps unexpected failures to the approved 500 body",
-  failedGet.status === 500 && same(failedGetBody, { error: "Unable to load analytics." }),
-  JSON.stringify({ status: failedGet.status, body: failedGetBody })
+  failedGet.status === 500 && failedGet.headers.get("cache-control") === "no-store" &&
+    same(failedGetBody, { error: "Unable to load analytics." }),
+  JSON.stringify({ status: failedGet.status, headers: Object.fromEntries(failedGet.headers), body: failedGetBody })
 );
 
 const invalidGet = await getAnalyticsRoute(new Request("http://localhost/api/analytics?from=2026-02-30"));
 const invalidGetBody = await invalidGet.json();
 check(
-  "analytics GET returns the approved 400 shape for malformed dates",
+  "analytics GET returns the approved no-store 400 shape for malformed dates",
   invalidGet.status === 400 && typeof invalidGetBody.error === "string" &&
+    invalidGet.headers.get("cache-control") === "no-store" &&
     Array.isArray(invalidGetBody.errors) && invalidGetBody.errors[0] === invalidGetBody.error,
-  JSON.stringify({ status: invalidGet.status, body: invalidGetBody })
+  JSON.stringify({ status: invalidGet.status, headers: Object.fromEntries(invalidGet.headers), body: invalidGetBody })
 );
 check("analytics GET is force-dynamic", dynamic === "force-dynamic", String(dynamic));
 
 const traversalPatch = await patchSkillGapRoute(
   new Request("http://localhost/api/skill-gaps/unsafe", { method: "PATCH", body: JSON.stringify({ notes: "x" }) }),
-  { params: Promise.resolve({ id: "skill-gap-product-analytics%2F.." }) }
+  { params: Promise.resolve({ id: "../skill-gap-product-analytics" }) }
 );
-check("skill-gap PATCH rejects a decoded path separator", traversalPatch.status === 400, String(traversalPatch.status));
+check("skill-gap PATCH validates the already-decoded framework param and rejects traversal", traversalPatch.status === 400, String(traversalPatch.status));
 
 const invalidJsonPatch = await patchSkillGapRoute(
   new Request("http://localhost/api/skill-gaps/skill-gap-product-analytics", { method: "PATCH", body: "{" }),
@@ -425,6 +469,50 @@ check(
       skillGap: { id: "skill-gap-product-analytics", notes: "Updated note" },
     }),
   JSON.stringify({ status: successfulPatch.status, headers: Object.fromEntries(successfulPatch.headers), body: successfulPatchBody })
+);
+
+const originalPortfolioDataRoot = process.env.RESUME_TAILOR_DATA_ROOT;
+const portfolioDataRoot = await mkdtemp(path.join(tmpdir(), "resume-editor-portfolio-patch-"));
+let portfolioPatch;
+let portfolioPatchBody;
+let portfolioAfterSync;
+try {
+  process.env.RESUME_TAILOR_DATA_ROOT = portfolioDataRoot;
+  const portfolioGap = {
+    id: "skill-gap-product-analytics",
+    skill: "Product analytics",
+    skillSlug: "product-analytics",
+    category: "Skills",
+    frequency: 2,
+    percentage: 50,
+    evidenceLevel: "Partial",
+    evidenceExplanation: "Verified evidence partially supports Product analytics.",
+    relatedJobs: [{ id: "job-1", company: "A", role: "Designer" }],
+  };
+  await skillGapsFs.syncSkillGaps([portfolioGap]);
+  const portfolioPatchHandler = createSkillGapPatchHandler(skillGapsFs.updateSkillGap);
+  portfolioPatch = await portfolioPatchHandler(
+    new Request("http://localhost/api/skill-gaps/skill-gap-product-analytics", {
+      method: "PATCH",
+      body: JSON.stringify({ portfolioOpportunity: "  Build a verified funnel case study  " }),
+    }),
+    { params: Promise.resolve({ id: "skill-gap-product-analytics" }) }
+  );
+  portfolioPatchBody = await portfolioPatch.json();
+  await skillGapsFs.syncSkillGaps([{ ...portfolioGap, frequency: 3, percentage: 75 }]);
+  portfolioAfterSync = (await skillGapsFs.listSkillGaps()).skillGaps[0];
+} finally {
+  if (originalPortfolioDataRoot === undefined) delete process.env.RESUME_TAILOR_DATA_ROOT;
+  else process.env.RESUME_TAILOR_DATA_ROOT = originalPortfolioDataRoot;
+  await rm(portfolioDataRoot, { recursive: true, force: true });
+}
+check(
+  "skill-gap PATCH trims and preserves a positive portfolio opportunity through a later sync",
+  portfolioPatch.status === 200 &&
+    portfolioPatchBody.skillGap?.portfolioOpportunity === "Build a verified funnel case study" &&
+    portfolioAfterSync?.portfolioOpportunity === "Build a verified funnel case study" &&
+    portfolioAfterSync?.frequency === 3,
+  JSON.stringify({ status: portfolioPatch.status, body: portfolioPatchBody, portfolioAfterSync })
 );
 
 const missingPatchHandler = createSkillGapPatchHandler(async () => null);

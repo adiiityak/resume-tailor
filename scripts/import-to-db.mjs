@@ -79,10 +79,12 @@ for (const summary of allApps) {
       fitScore: typeof app.fitScore === "number" ? app.fitScore : null,
       nextFollowUpAt: app.nextFollowUpAt || null,
       submittedAt: d(app.submittedAt),
+      submittedResumeVersion: app.submittedResumeVersion || null,
+      submittedCoverLetterVersion: app.submittedCoverLetterVersion || null,
       applicationSource: app.applicationSource || "",
       tags: app.tags || [],
       migrated: !!app.migrated,
-      extra: {},
+      extra: app.baseProfileId ? { baseProfileId: app.baseProfileId } : {},
       createdAt: d(app.createdAt) || new Date(),
       updatedAt: d(app.updatedAt) || new Date(),
     });

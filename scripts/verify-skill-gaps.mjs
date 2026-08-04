@@ -93,6 +93,83 @@ function withConflictInterleaving(realDb, targetId) {
   });
 }
 
+function withPatchEvidenceDowngradeInterleaving(realDb, targetId) {
+  let interleaved = false;
+  return new Proxy(realDb, {
+    get(target, property) {
+      if (property !== "select") {
+        const value = Reflect.get(target, property);
+        return typeof value === "function" ? value.bind(target) : value;
+      }
+      return (...args) => {
+        const select = target.select(...args);
+        return new Proxy(select, {
+          get(selectBuilder, selectProperty) {
+            if (selectProperty !== "from") {
+              const value = Reflect.get(selectBuilder, selectProperty);
+              return typeof value === "function" ? value.bind(selectBuilder) : value;
+            }
+            return (table) => {
+              const from = selectBuilder.from(table);
+              if (table !== schema.skillGaps) return from;
+              return new Proxy(from, {
+                get(fromBuilder, fromProperty) {
+                  if (fromProperty !== "where") {
+                    const value = Reflect.get(fromBuilder, fromProperty);
+                    return typeof value === "function" ? value.bind(fromBuilder) : value;
+                  }
+                  return (condition) => {
+                    const where = fromBuilder.where(condition);
+                    return new Proxy(where, {
+                      get(whereBuilder, whereProperty) {
+                        if (whereProperty !== "limit") {
+                          const value = Reflect.get(whereBuilder, whereProperty);
+                          return typeof value === "function" ? value.bind(whereBuilder) : value;
+                        }
+                        return async (limit) => {
+                          const rows = await whereBuilder.limit(limit);
+                          if (!interleaved && rows[0]?.id === targetId) {
+                            interleaved = true;
+                            await realDb.update(schema.skillGaps).set({
+                              evidenceLevel: "Partial",
+                              evidenceExplanation: "Evidence was concurrently downgraded.",
+                              learningStatus: "Not Started",
+                              updatedAt: new Date(),
+                            }).where(and(
+                              eq(schema.skillGaps.userId, rows[0].userId),
+                              eq(schema.skillGaps.id, targetId)
+                            ));
+                          }
+                          return rows;
+                        };
+                      },
+                    });
+                  };
+                },
+              });
+            };
+          },
+        });
+      };
+    },
+  });
+}
+
+function derivedOnly(gap) {
+  const {
+    importance, importanceSource, learningStatus, notes, portfolioOpportunity,
+    createdAt, updatedAt, ...derived
+  } = gap;
+  return derived;
+}
+
+async function quarantineContents(directory) {
+  const names = (await readdir(directory)).filter((name) =>
+    name.startsWith("skill-gaps.corrupt-") && name.endsWith(".json")
+  );
+  return Promise.all(names.map((name) => readFile(path.join(directory, name), "utf8")));
+}
+
 async function runContract(name, store) {
   console.log(name);
 
@@ -111,12 +188,14 @@ async function runContract(name, store) {
     importance: "High",
     learningStatus: "Learning",
     notes: "  Complete a real analytics exercise.  ",
+    portfolioOpportunity: "  Build a verified funnel case study.  ",
   });
   check(
     "user edit persisted",
-    edited.importanceSource === "user" &&
+      edited.importanceSource === "user" &&
       edited.learningStatus === "Learning" &&
-      edited.notes === "Complete a real analytics exercise."
+      edited.notes === "Complete a real analytics exercise." &&
+      edited.portfolioOpportunity === "Build a verified funnel case study."
   );
 
   const beforeNoOp = edited.updatedAt;
@@ -124,6 +203,7 @@ async function runContract(name, store) {
     importance: "High",
     learningStatus: "Learning",
     notes: "Complete a real analytics exercise.",
+    portfolioOpportunity: "Build a verified funnel case study.",
   });
   check("no-op user patch preserves updatedAt", noOp.updatedAt === beforeNoOp);
 
@@ -139,6 +219,7 @@ async function runContract(name, store) {
       refreshed[0].importanceSource === "user" &&
       refreshed[0].learningStatus === "Learning" &&
       refreshed[0].notes === "Complete a real analytics exercise." &&
+      refreshed[0].portfolioOpportunity === "Build a verified funnel case study." &&
       refreshed[0].relatedJobs.length === 2
   );
 
@@ -230,7 +311,7 @@ try {
   const beforeSameSync = await stat(dataFile);
   await new Promise((resolve) => setTimeout(resolve, 5));
   const current = await store.listSkillGaps();
-  await store.syncSkillGaps(current.skillGaps.map(({ importance, importanceSource, learningStatus, notes, portfolioOpportunity, createdAt, updatedAt, ...gap }) => gap));
+  await store.syncSkillGaps(current.skillGaps.map(derivedOnly));
   const afterSameSync = await stat(dataFile);
   check("unchanged filesystem sync avoids a rewrite", beforeSameSync.mtimeMs === afterSameSync.mtimeMs);
 
@@ -245,10 +326,39 @@ try {
   await writeFile(dataFile, JSON.stringify([current.skillGaps[0], invalidVerifiedRecord, null, { id: "unsafe" }], null, 2));
   const partiallyCorrupt = await store.listSkillGaps();
   check("malformed filesystem records are counted and skipped", partiallyCorrupt.skillGaps.length === 1 && partiallyCorrupt.corrupted === 3);
+  const recordCorruptionRaw = await readFile(dataFile, "utf8");
+  await store.syncSkillGaps(partiallyCorrupt.skillGaps.map(derivedOnly));
+  check(
+    "no-op sync preserves record-level filesystem corruption without rewriting",
+    (await readFile(dataFile, "utf8")) === recordCorruptionRaw
+  );
+  const recordQuarantinesBefore = await quarantineContents(path.dirname(dataFile));
+  await store.syncSkillGaps([{ ...derivedOnly(partiallyCorrupt.skillGaps[0]), frequency: partiallyCorrupt.skillGaps[0].frequency + 1 }]);
+  const recordQuarantinesAfter = await quarantineContents(path.dirname(dataFile));
+  check(
+    "a real write quarantines recoverable record-level corruption",
+    recordQuarantinesAfter.length === recordQuarantinesBefore.length + 1 &&
+      recordQuarantinesAfter.includes(recordCorruptionRaw),
+    JSON.stringify(recordQuarantinesAfter)
+  );
   await writeFile(dataFile, "{not json");
   const malformedJson = await store.listSkillGaps();
   check("malformed filesystem JSON is counted without throwing", malformedJson.skillGaps.length === 0 && malformedJson.corrupted === 1);
-  check("filesystem writes stay under the injected root", (await readFile(dataFile, "utf8")) === "{not json");
+  await store.syncSkillGaps([]);
+  check(
+    "no-op sync preserves top-level filesystem corruption without rewriting",
+    (await readFile(dataFile, "utf8")) === "{not json"
+  );
+  const topLevelQuarantinesBefore = await quarantineContents(path.dirname(dataFile));
+  await store.syncSkillGaps([baseGap]);
+  const topLevelQuarantinesAfter = await quarantineContents(path.dirname(dataFile));
+  check(
+    "a real write quarantines recoverable top-level corruption",
+    topLevelQuarantinesAfter.length === topLevelQuarantinesBefore.length + 1 &&
+      topLevelQuarantinesAfter.includes("{not json"),
+    JSON.stringify(topLevelQuarantinesAfter)
+  );
+  check("filesystem writes stay under the injected root", JSON.parse(await readFile(dataFile, "utf8"))[0]?.id === GAP_ID);
 
   process.env.STORAGE_DRIVER = "db";
   delete process.env.RESUME_TAILOR_DATA_ROOT;
@@ -295,6 +405,35 @@ try {
     JSON.stringify(afterConcurrentEdit)
   );
   __setTestDb(realDb);
+
+  const patchRaceGap = {
+    ...baseGap,
+    id: "skill-gap-patch-race",
+    skill: "Patch race",
+    skillSlug: "patch-race",
+    evidenceLevel: "Strong",
+    evidenceExplanation: "Verified evidence found.",
+  };
+  await store.syncSkillGaps([patchRaceGap]);
+  __setTestDb(withPatchEvidenceDowngradeInterleaving(realDb, patchRaceGap.id));
+  let patchRaceError;
+  try {
+    await store.updateSkillGap(patchRaceGap.id, { learningStatus: "Verified in Resume" });
+  } catch (error) {
+    patchRaceError = error;
+  }
+  __setTestDb(realDb);
+  const patchRacePersisted = (await store.listSkillGaps()).skillGaps.find((gap) => gap.id === patchRaceGap.id);
+  check(
+    "database PATCH returns a validation error when evidence is downgraded after validation",
+    patchRaceError?.status === 400 && patchRaceError.message === "Verified in Resume requires Strong evidence.",
+    patchRaceError?.stack || String(patchRaceError)
+  );
+  check(
+    "database PATCH cannot restore Verified in Resume after the concurrent downgrade",
+    patchRacePersisted?.evidenceLevel === "Partial" && patchRacePersisted.learningStatus !== "Verified in Resume",
+    JSON.stringify(patchRacePersisted)
+  );
 
   process.env.RESUME_TAILOR_USER_ID = "skill-gap-user-2";
   const otherUser = await store.listSkillGaps();
