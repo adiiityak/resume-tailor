@@ -506,8 +506,9 @@ await check("gives analytics and shared mobile controls 44px touch targets", asy
     readAnalyticsPage(),
     readComponent("components/navigation/AppShell.js"),
     readComponent("components/navigation/PrivacyModeBadge.js"),
+    readComponent("components/auth/AuthAccount.js"),
   ]);
-  const [filters, performance, keywords, roadmap, editor, emptyState, page, appShell, privacyBadge] = sources;
+  const [filters, performance, keywords, roadmap, editor, emptyState, page, appShell, privacyBadge, authAccount] = sources;
 
   assert.match(filters, /const controlClass = `min-h-11/);
   assert.match(filters, /const buttonClass = `min-h-11/);
@@ -524,8 +525,36 @@ await check("gives analytics and shared mobile controls 44px touch targets", asy
   assert.match(appShell, /aria-label="Open navigation menu"[\s\S]*?min-h-11 min-w-11/);
   assert.match(appShell, /aria-label="Close menu"[\s\S]*?min-h-11 min-w-11/);
   assert.match(appShell, /mobile \? "min-h-11" : ""/);
-  assert.match(appShell, /<NavLinks pathname=\{pathname\} onNavigate=\{\(\) => setDrawerOpen\(false\)\} mobile \/>/);
+  assert.match(appShell, /<NavLinks pathname=\{pathname\} onNavigate=\{\(\) => closeDrawer\(false\)\} mobile \/>/);
   assert.match(privacyBadge, /min-h-11/);
+  assert.match(authAccount, /if \(status === "loading"\) \{\s*return <div className=\{compact \? "h-11 w-11 animate-pulse rounded-full bg-slate-100" : "h-8 w-full animate-pulse rounded-lg bg-slate-100"\} aria-label="Loading account" \/>;\s*\}/);
+  assert.match(authAccount, /if \(compact\) \{[\s\S]*?className="grid min-h-11 min-w-11/);
+  assert.match(authAccount, /className="mt-2 flex min-h-11 w-full/);
+});
+
+await check("wires the mobile drawer's dialog, focus, keyboard, and scroll lifecycle", async () => {
+  const appShell = await readComponent("components/navigation/AppShell.js");
+
+  assert.match(appShell, /import \{ useCallback, useEffect, useRef, useState \} from "react";/);
+  assert.match(appShell, /const menuButtonRef = useRef\(null\);/);
+  assert.match(appShell, /const closeButtonRef = useRef\(null\);/);
+  assert.match(appShell, /const drawerRef = useRef\(null\);/);
+  assert.match(appShell, /const restoreFocusRef = useRef\(true\);/);
+  assert.match(appShell, /function openDrawer\(event\) \{[\s\S]*?menuButtonRef\.current = event\.currentTarget;[\s\S]*?restoreFocusRef\.current = true;[\s\S]*?setDrawerOpen\(true\);/);
+  assert.match(appShell, /const closeDrawer = useCallback\(\(restoreFocus = true\) => \{[\s\S]*?restoreFocusRef\.current = restoreFocus;[\s\S]*?setDrawerOpen\(false\);/);
+  assert.match(appShell, /ref=\{menuButtonRef\}[\s\S]*?onClick=\{openDrawer\}[\s\S]*?aria-expanded=\{drawerOpen\}[\s\S]*?aria-controls="mobile-navigation-drawer"/);
+  assert.match(appShell, /ref=\{drawerRef\}\s+id="mobile-navigation-drawer"\s+role="dialog"\s+aria-modal="true"\s+aria-labelledby="mobile-navigation-drawer-title"/);
+  assert.match(appShell, /<span id="mobile-navigation-drawer-title"/);
+  assert.match(appShell, /ref=\{closeButtonRef\}[\s\S]*?aria-label="Close menu"/);
+  assert.match(appShell, /const previousBodyOverflow = document\.body\.style\.overflow;[\s\S]*?document\.body\.style\.overflow = "hidden";[\s\S]*?closeButtonRef\.current\?\.focus\(\);/);
+  assert.match(appShell, /if \(event\.key === "Escape"\) \{[\s\S]*?event\.preventDefault\(\);[\s\S]*?closeDrawer\(\);/);
+  assert.match(appShell, /if \(event\.key !== "Tab"\) return;[\s\S]*?drawerRef\.current\?\.querySelectorAll\(FOCUSABLE_SELECTOR\)/);
+  assert.match(appShell, /event\.shiftKey && document\.activeElement === firstFocusable[\s\S]*?lastFocusable\.focus\(\);/);
+  assert.match(appShell, /!event\.shiftKey && document\.activeElement === lastFocusable[\s\S]*?firstFocusable\.focus\(\);/);
+  assert.match(appShell, /document\.addEventListener\("keydown", handleKeyDown\);[\s\S]*?document\.removeEventListener\("keydown", handleKeyDown\);/);
+  assert.match(appShell, /document\.body\.style\.overflow = previousBodyOverflow;[\s\S]*?restoreFocusRef\.current && menuButtonRef\.current\?\.isConnected[\s\S]*?menuButtonRef\.current\.focus\(\);/);
+  assert.match(appShell, /<div className="absolute inset-0 bg-slate-900\/40" onClick=\{\(\) => closeDrawer\(\)\} aria-hidden="true" \/>/);
+  assert.match(appShell, /<NavLinks pathname=\{pathname\} onNavigate=\{\(\) => closeDrawer\(false\)\} mobile \/>/);
 });
 
 await check("replaces PlannedPage with a client analytics controller", async () => {
