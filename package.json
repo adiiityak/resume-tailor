@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
+    "db:check-config": "drizzle-kit check",
     "db:push": "drizzle-kit push",
     "db:verify": "node scripts/verify-schema.mjs",
     "db:verify-store": "node --import ./scripts/alias-register.mjs scripts/verify-store.mjs",
@@ -27,7 +28,7 @@
     "deployment:check": "node scripts/check-production-env.mjs",
     "deployment:verify": "node scripts/verify-deployment.mjs",
     "deployment:verify-config": "node --import ./scripts/alias-register.mjs scripts/verify-production-config.mjs && node scripts/verify-env-loader.mjs",
-    "verify:ci": "npm run db:verify && npm run db:verify-store && npm run db:verify-store2 && npm run db:verify-import && npm run db:verify-auth && npm run deployment:verify-config && npm run analytics:verify && npm run build"
+    "verify:ci": "npm run db:check-config && npm run db:verify && npm run db:verify-store && npm run db:verify-store2 && npm run db:verify-import && npm run db:verify-auth && npm run deployment:verify-config && npm run analytics:verify && npm run build"
   },
   "engines": {
     "node": ">=20.9.0"

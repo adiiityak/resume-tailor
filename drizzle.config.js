@@ -1,6 +1,9 @@
-import nextEnv from "@next/env";
+import { createRequire } from "node:module";
 
-nextEnv.loadEnvConfig(process.cwd());
+const require = createRequire(import.meta.url);
+const { loadEnvConfig } = require("@next/env");
+
+loadEnvConfig(process.cwd());
 
 /** @type {import('drizzle-kit').Config} */
 const config = {
