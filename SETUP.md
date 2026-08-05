@@ -13,6 +13,11 @@ or Vercel's dashboard.
 4. Copy the **Transaction pooler** URI on port `6543`. Serverless functions need
    transaction pooling; do not use a direct `5432` application connection.
 
+Drizzle schema commands automatically switch a shared Supabase transaction-pooler URI
+to its matching session-pooler endpoint on port `5432`. The application continues to use
+the original `DATABASE_URL` on port `6543`. For another provider or a dedicated migration
+connection, set `DATABASE_MIGRATION_URL` separately.
+
 Add it to `.env.local`:
 
 ```bash
